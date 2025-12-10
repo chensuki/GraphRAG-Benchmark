@@ -8,7 +8,11 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.embeddings import Embeddings
 from datasets import Dataset
 from langchain_openai import ChatOpenAI
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    # Fallback to deprecated import for backward compatibility
+    from langchain_community.embeddings import HuggingFaceBgeEmbeddings as HuggingFaceEmbeddings
 from ragas.embeddings import LangchainEmbeddingsWrapper
 from Evaluation.metrics import compute_context_relevance, compute_evidence_recall
 from langchain_ollama import OllamaEmbeddings
@@ -143,16 +147,14 @@ async def main(args: argparse.Namespace):
             temperature=0.0,
             max_retries=3,
             timeout=30,
-            model_kwargs={
-                "top_p": 1,
-                "seed": SEED,
-                "presence_penalty": 0,
-                "frequency_penalty": 0
-            }
+            top_p=1,
+            seed=SEED,
+            presence_penalty=0,
+            frequency_penalty=0
         )
         
         # Initialize the embedding model
-        embedding = HuggingFaceBgeEmbeddings(model_name=args.embedding_model)
+        embedding = HuggingFaceEmbeddings(model_name=args.embedding_model)
 
     elif args.mode == "ollama":
         ollama_client = OllamaClient(base_url=args.base_url)
@@ -177,7 +179,7 @@ async def main(args: argparse.Namespace):
 
     # Load evaluation data
     print(f"Loading evaluation data from {args.data_file}...")
-    with open(args.data_file, 'r') as f:
+    with open(args.data_file, 'r', encoding='utf-8') as f:
         file_data = json.load(f)  # List of question items
     
     # Group data by question type
@@ -201,8 +203,34 @@ async def main(args: argparse.Namespace):
 
         ids = [item['id'] for item in group_items]
         questions = [item['question'] for item in group_items]
-        evidences = [item['evidence'] for item in group_items]
-        contexts = [item['context'] for item in group_items]
+        
+        # Convert evidence to list format (handle both string and list)
+        evidences = []
+        for item in group_items:
+            evidence = item.get('evidence', '')
+            if isinstance(evidence, str):
+                # Split by semicolon if it's a string with multiple statements
+                if ';' in evidence:
+                    evidence_list = [e.strip() for e in evidence.split(';') if e.strip()]
+                else:
+                    evidence_list = [evidence] if evidence else []
+            elif isinstance(evidence, list):
+                evidence_list = evidence
+            else:
+                evidence_list = []
+            evidences.append(evidence_list)
+        
+        # Ensure contexts is a list of lists
+        contexts = []
+        for item in group_items:
+            context = item.get('context', [])
+            if isinstance(context, str):
+                context_list = [context] if context else []
+            elif isinstance(context, list):
+                context_list = context
+            else:
+                context_list = []
+            contexts.append(context_list)
         
         # Create dataset
         data = {
@@ -238,8 +266,8 @@ async def main(args: argparse.Namespace):
     if args.output_file:
         print(f"\nSaving results to {args.output_file}...")
         os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
-        with open(args.output_file, 'w') as f:
-            json.dump(all_results, f, indent=2)
+        with open(args.output_file, 'w', encoding='utf-8') as f:
+            json.dump(all_results, f, indent=2, ensure_ascii=False)
 
     await llm.close() if args.mode == "ollama" else None
     print('\nEvaluation complete.')

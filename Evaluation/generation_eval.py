@@ -8,7 +8,11 @@ from langchain_core.language_models import BaseLanguageModel
 from langchain_core.embeddings import Embeddings
 from datasets import Dataset
 from langchain_openai import ChatOpenAI
-from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+try:
+    from langchain_huggingface import HuggingFaceEmbeddings
+except ImportError:
+    # Fallback to deprecated import for backward compatibility
+    from langchain_community.embeddings import HuggingFaceBgeEmbeddings as HuggingFaceEmbeddings
 from Evaluation.metrics import compute_answer_correctness, compute_coverage_score, compute_faithfulness_score, compute_rouge_score
 from langchain_ollama import OllamaEmbeddings
 from Evaluation.llm import OllamaClient, OllamaWrapper
@@ -158,16 +162,14 @@ async def main(args: argparse.Namespace):
             temperature=0.0,
             max_retries=3,
             timeout=30,
-            model_kwargs={
-                "top_p": 1,
-                "seed": SEED,
-                "presence_penalty": 0,
-                "frequency_penalty": 0
-            }
+            top_p=1,
+            seed=SEED,
+            presence_penalty=0,
+            frequency_penalty=0
         )
         
         # Initialize the embedding model
-        embedding = HuggingFaceBgeEmbeddings(model_name=args.embedding_model)
+        embedding = HuggingFaceEmbeddings(model_name=args.embedding_model)
     
     elif args.mode == "ollama":
         ollama_client = OllamaClient(base_url=args.base_url)
@@ -191,7 +193,7 @@ async def main(args: argparse.Namespace):
 
     # Load evaluation data
     print(f"Loading evaluation data from {args.data_file}...")
-    with open(args.data_file, 'r') as f:
+    with open(args.data_file, 'r', encoding='utf-8') as f:
         file_data = json.load(f)  # Now a list of question items
     
     # Define the evaluation metrics for each question type
@@ -267,8 +269,8 @@ async def main(args: argparse.Namespace):
     if args.output_file:
         print(f"\nSaving results to {args.output_file}...")
         os.makedirs(os.path.dirname(args.output_file), exist_ok=True)
-        with open(args.output_file, 'w') as f:
-            json.dump(all_results, f, indent=2)
+        with open(args.output_file, 'w', encoding='utf-8') as f:
+            json.dump(all_results, f, indent=2, ensure_ascii=False)
     await llm.close() if args.mode == "ollama" else None
     print('\nEvaluation complete.')
 

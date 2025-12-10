@@ -1,0 +1,8 @@
+.venv/
+lightrag_workspace/
+*.pyc
+data/
+logs/
+results/
+Datasets/Questions/medical_questions_test.json
+Datasets/Corpus/medical_test.json

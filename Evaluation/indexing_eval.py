@@ -401,7 +401,7 @@ def main():
             output_text = "\n".join(output_lines)
             
             if args.output:
-                with open(args.output, 'w') as f:
+                with open(args.output, 'w', encoding='utf-8') as f:
                     f.write(output_text)
                 print(f"Results saved to {args.output}")
             else:
