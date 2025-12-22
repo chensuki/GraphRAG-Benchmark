@@ -345,8 +345,8 @@ def main():
     parser.add_argument(
         "--subset",
         required=True,
-        choices=["medical", "novel", "medical_test"],
-        help="要处理的数据子集（medical、novel 或 medical_test）"
+        choices=["medical", "novel", "medical_test", "hotpotqa"],
+        help="要处理的数据子集（medical、novel、medical_test 或 hotpotqa）"
     )
     
     # 配置文件路径
@@ -493,6 +493,10 @@ def main():
         "medical_test": {
             "corpus": "./Datasets/Corpus/medical_test.json",
             "questions": "./Datasets/Questions/medical_questions_test.json"
+        },
+        "hotpotqa": {
+            "corpus": "./Datasets/Corpus/hotpotqa.parquet",
+            "questions": "./Datasets/Questions/hotpotqa_questions.json"
         }
     }
     

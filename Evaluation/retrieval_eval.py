@@ -177,18 +177,62 @@ async def main(args: argparse.Namespace):
     else:
         raise ValueError(f"Invalid mode: {args.mode}")
 
-    # Load evaluation data
+    # Load evaluation data with memory-efficient streaming for large files
     print(f"Loading evaluation data from {args.data_file}...")
-    with open(args.data_file, 'r', encoding='utf-8') as f:
-        file_data = json.load(f)  # List of question items
     
-    # Group data by question type
+    # Check file size to decide loading strategy
+    file_size = os.path.getsize(args.data_file)
+    file_size_mb = file_size / (1024 * 1024)
+    print(f"File size: {file_size_mb:.2f} MB")
+    
+    # Group data by question type while loading (memory efficient)
     grouped_data = {}
-    for item in file_data:
-        q_type = item.get("question_type", "Uncategorized")
-        if q_type not in grouped_data:
-            grouped_data[q_type] = []
-        grouped_data[q_type].append(item)
+    
+    # Use streaming JSON parser for large files (>100MB)
+    if file_size > 100 * 1024 * 1024:  # 100MB threshold
+        print("Large file detected, using streaming parser...")
+        try:
+            import ijson
+            item_count = 0
+            with open(args.data_file, 'rb') as f:
+                # Parse JSON array items one by one
+                parser = ijson.items(f, 'item')
+                for item in parser:
+                    q_type = item.get("question_type", "Uncategorized")
+                    if q_type not in grouped_data:
+                        grouped_data[q_type] = []
+                    
+                    # Only keep items if we haven't reached the limit for this type
+                    if args.num_samples is None or len(grouped_data[q_type]) < args.num_samples:
+                        grouped_data[q_type].append(item)
+                    
+                    item_count += 1
+                    if item_count % 1000 == 0:
+                        print(f"Processed {item_count} items...")
+            
+            print(f"Loaded {item_count} items from file (kept {sum(len(v) for v in grouped_data.values())} for evaluation)")
+        except ImportError:
+            print("ERROR: ijson library is required for large files (>100MB)")
+            print("Please install it with: pip install ijson")
+            raise ImportError("ijson library is required for large files. Install with: pip install ijson")
+    else:
+        # Standard loading for smaller files
+        with open(args.data_file, 'r', encoding='utf-8') as f:
+            file_data = json.load(f)
+        
+        print(f"Loaded {len(file_data)} items from file")
+        
+        # Group data by question type
+        for item in file_data:
+            q_type = item.get("question_type", "Uncategorized")
+            if q_type not in grouped_data:
+                grouped_data[q_type] = []
+            grouped_data[q_type].append(item)
+        
+        # Apply num_samples limit if specified
+        if args.num_samples:
+            for q_type in grouped_data:
+                grouped_data[q_type] = grouped_data[q_type][:args.num_samples]
     
     all_results = {}
     

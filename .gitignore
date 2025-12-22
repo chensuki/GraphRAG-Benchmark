@@ -1,9 +1,51 @@
-.venv/
 lightrag_workspace/
-*.pyc
 data/
 logs/
 results/
-Datasets/Questions/medical_questions_test.json
-Datasets/Corpus/medical_test.json
 .spec-workflow/
+
+# 系统和目录
+OTHER/
+.spec-workflow
+.claude
+claude.md
+AGENTS.md
+.cursor
+.vscode/
+.agent/
+
+# 环境和配置
+.env
+
+
+# 虚拟环境
+.env
+.venv
+env/
+
+# IDE和编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 临时文件和缓存
+*.tmp
+*.temp
+.cache/
+*.log
+*.pid
+*.seed
+*.pid.lock
+*.pyc
+
+# 监控和日志
+logs/
+monitoring/
+*.trace
+
+# 输出文件
+output/
+scripts/output/
+data/
+
