@@ -153,6 +153,9 @@ async def process_corpus(
     sample: Optional[int],
     output_dir: str,
     top_k: int = 10,
+    top_k_sentences: Optional[int] = None,
+    top_k_passages: Optional[int] = None,
+    enable_passage_retrieval: bool = True,
     skip_build: bool = False,
     resume_from_chunk_index: Optional[int] = None
 ):
@@ -167,7 +170,10 @@ async def process_corpus(
         questions: 按语料库名称分组的问题字典
         sample: 采样的问题数量（可选）
         output_dir: 输出目录
-        top_k: 查询时返回的上下文数量
+        top_k: 查询时返回的上下文数量（默认值）
+        top_k_sentences: 返回的句子数量（可选，如果未指定则使用top_k值）
+        top_k_passages: 返回的段落数量（可选，如果未指定则使用top_k值）
+        enable_passage_retrieval: 是否启用段落检索（默认启用）
         skip_build: 是否跳过构建阶段，直接进入查询阶段
         resume_from_chunk_index: 从指定切块索引开始处理（用于断点续传，None表示从头开始）
     """
@@ -239,10 +245,20 @@ async def process_corpus(
         results = []
         for q in tqdm(corpus_questions, desc=f"回答问题 - {corpus_name}"):
             try:
-                # 查询框架
-                answer, context_list = await rag.aquery(
-                    question=q["question"],
-                    top_k=top_k
+                # 查询框架 - 使用aquery_full获取完整结果
+                query_result = await rag.aquery_full(
+                    query=q["question"],
+                    top_k_sentences=top_k_sentences if top_k_sentences is not None else top_k,
+                    top_k_passages=top_k_passages if top_k_passages is not None else top_k,
+                    enable_passage_retrieval=enable_passage_retrieval,
+                    generate_answer=True
+                )
+                
+                # 提取结果
+                answer = query_result.natural_language_answer or ""
+                context_list = query_result.extract_context_list(
+                    top_k_sentences=top_k_sentences,
+                    top_k_passages=top_k_passages
                 )
                 
                 # 确保 context 是列表格式
@@ -251,7 +267,7 @@ async def process_corpus(
                 elif not isinstance(context_list, list):
                     context_list = []
                 
-                # 构建标准格式结果
+                # 构建标准格式结果（context 包含所有检索结果：图数据、段落数据、实体数据、句子数据）
                 result = {
                     "id": q["id"],
                     "question": q["question"],
@@ -345,7 +361,7 @@ def main():
     parser.add_argument(
         "--subset",
         required=True,
-        choices=["medical", "novel", "medical_test", "hotpotqa"],
+        choices=["medical", "novel", "medical_100", "hotpotqa"],
         help="要处理的数据子集（medical、novel、medical_test 或 hotpotqa）"
     )
     
@@ -457,6 +473,33 @@ def main():
         help="查询时返回的上下文数量（默认 10）"
     )
     
+    parser.add_argument(
+        "--top_k_sentences",
+        type=int,
+        default=None,
+        help="返回的句子数量（可选，如果未指定则使用--top_k值）"
+    )
+    
+    parser.add_argument(
+        "--top_k_passages",
+        type=int,
+        default=None,
+        help="返回的段落数量（可选，如果未指定则使用--top_k值）"
+    )
+    
+    parser.add_argument(
+        "--enable_passage_retrieval",
+        action="store_true",
+        default=True,
+        help="是否启用段落检索（默认启用）"
+    )
+    
+    parser.add_argument(
+        "--disable_passage_retrieval",
+        action="store_true",
+        help="禁用段落检索（仅返回句子和图检索结果）"
+    )
+    
     # 输出配置
     parser.add_argument(
         "--output_dir",
@@ -490,9 +533,9 @@ def main():
             "corpus": "./Datasets/Corpus/novel.parquet",
             "questions": "./Datasets/Questions/novel_questions.parquet"
         },
-        "medical_test": {
-            "corpus": "./Datasets/Corpus/medical_test.json",
-            "questions": "./Datasets/Questions/medical_questions_test.json"
+        "medical_100": {
+            "corpus": "./Datasets/Corpus/medical.parquet",
+            "questions": "./Datasets/Questions/medical_questions_100_balanced.json"
         },
         "hotpotqa": {
             "corpus": "./Datasets/Corpus/hotpotqa.parquet",
@@ -625,6 +668,9 @@ def main():
                     sample=args.sample,
                     output_dir=args.output_dir,
                     top_k=args.top_k,
+                    top_k_sentences=args.top_k_sentences,
+                    top_k_passages=args.top_k_passages,
+                    enable_passage_retrieval=not args.disable_passage_retrieval,
                     skip_build=args.skip_build,
                     resume_from_chunk_index=args.resume_from_chunk
                 )
