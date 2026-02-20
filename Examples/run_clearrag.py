@@ -156,8 +156,7 @@ async def process_corpus(
     top_k_sentences: Optional[int] = None,
     top_k_passages: Optional[int] = None,
     enable_passage_retrieval: bool = True,
-    skip_build: bool = False,
-    resume_from_chunk_index: Optional[int] = None
+    skip_build: bool = False
 ):
     """
     处理单个语料库：索引并回答问题
@@ -175,7 +174,6 @@ async def process_corpus(
         top_k_passages: 返回的段落数量（可选，如果未指定则使用top_k值）
         enable_passage_retrieval: 是否启用段落检索（默认启用）
         skip_build: 是否跳过构建阶段，直接进入查询阶段
-        resume_from_chunk_index: 从指定切块索引开始处理（用于断点续传，None表示从头开始）
     """
     logger.info(f"📚 处理语料库: {corpus_name}")
     
@@ -214,12 +212,11 @@ async def process_corpus(
     try:
         # 1. 索引语料库（如果未跳过构建）
         if not skip_build:
-            if resume_from_chunk_index is not None:
-                logger.info(f"🔄 断点续传：从切块 {resume_from_chunk_index} 开始处理")
-                logger.info(f"🔍 正在索引语料库: {corpus_name} ({len(context.split())} 词, {len(context)} 字符)")
-            else:
-                logger.info(f"🔍 正在索引语料库: {corpus_name} ({len(context.split())} 词, {len(context)} 字符)")
-            await rag.ainsert(context, resume_from_chunk_index=resume_from_chunk_index)
+            logger.info(f"🔍 正在索引语料库: {corpus_name} ({len(context.split())} 词, {len(context)} 字符)")
+            await rag.abuild(
+                content=context,
+                source_type="text"
+            )
             logger.info(f"✅ 索引完成: {corpus_name}")
         else:
             logger.info(f"⏭️  跳过构建阶段，直接进入查询阶段（假设语料库 {corpus_name} 已构建）")
@@ -333,12 +330,6 @@ def main():
     --subset medical_test \\
     --config_path ClearRAG/config/config.yaml \\
     --skip-build
-  
-  # 断点续传：从切块 113 开始继续构建
-  python Examples/run_clearrag.py \\
-    --subset medical \\
-    --config_path ClearRAG/config/config.yaml \\
-    --resume-from-chunk 113
   
   # 使用关键字参数
   python Examples/run_clearrag.py \\
@@ -514,13 +505,6 @@ def main():
         help="跳过构建阶段，直接进入查询阶段（假设语料库已构建）"
     )
     
-    parser.add_argument(
-        "--resume-from-chunk",
-        type=int,
-        default=None,
-        help="从指定切块索引开始处理（用于断点续传，chunk_index 从 0 开始，例如：--resume-from-chunk 113）"
-    )
-    
     args = parser.parse_args()
     
     # 定义数据路径（支持 Parquet 和 JSON 格式）
@@ -671,8 +655,7 @@ def main():
                     top_k_sentences=args.top_k_sentences,
                     top_k_passages=args.top_k_passages,
                     enable_passage_retrieval=not args.disable_passage_retrieval,
-                    skip_build=args.skip_build,
-                    resume_from_chunk_index=args.resume_from_chunk
+                    skip_build=args.skip_build
                 )
             )
         await asyncio.gather(*tasks, return_exceptions=True)
