@@ -1,16 +1,22 @@
 import asyncio
+import sys
 import os
 import logging
 import argparse
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
+from dataclasses import dataclass
+import numpy as np
 from dotenv import load_dotenv
 from datasets import load_dataset
 from fast_graphrag import GraphRAG
-from fast_graphrag._llm import OpenAILLMService, HuggingFaceEmbeddingService
-from transformers import AutoTokenizer, AutoModel
+from fast_graphrag._llm import OpenAILLMService
+from fast_graphrag._llm._base import BaseEmbeddingService
 from tqdm import tqdm
-from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
+import httpx
+
+# Add project root to path for local imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +31,51 @@ EXAMPLE_QUERIES = [
     "Why does Dickens choose to divide the story into \"staves\" rather than chapters?"
 ]
 ENTITY_TYPES = ["Character", "Animal", "Place", "Object", "Activity", "Event"]
+
+@dataclass
+class OpenAICompatibleEmbeddingService(BaseEmbeddingService):
+    """Embedding service using OpenAI-compatible API (e.g., Zhipu, DeepSeek)"""
+    
+    model: str = "embedding-3"
+    base_url: str = "https://open.bigmodel.cn/api/paas/v4"
+    api_key: str = ""
+    embedding_dim: int = 2048  # 智谱 embedding-3 维度
+    
+    async def encode(self, texts: List[str], model: Optional[str] = None) -> np.ndarray:
+        """Encode texts using OpenAI-compatible embedding API"""
+        model_to_use = model or self.model
+        
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            try:
+                # Build request with dimensions parameter (required for Zhipu embedding-3)
+                request_body = {
+                    "model": model_to_use,
+                    "input": texts
+                }
+                
+                # Add dimensions parameter for Zhipu embedding-3 model
+                if "embedding-3" in model_to_use:
+                    request_body["dimensions"] = self.embedding_dim
+                
+                response = await client.post(
+                    f"{self.base_url}/embeddings",
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json"
+                    },
+                    json=request_body
+                )
+                
+                response.raise_for_status()
+                data = response.json()
+                
+                # Extract embeddings in order
+                embeddings = [item["embedding"] for item in data["data"]]
+                return np.array(embeddings)
+            except httpx.HTTPStatusError as e:
+                logging.error(f"Embedding API error: {e.response.status_code} - {e.response.text}")
+                raise
+
 
 def group_questions_by_source(question_list: List[dict]) -> Dict[str, List[dict]]:
     """Group questions by their source"""
@@ -42,7 +93,10 @@ def process_corpus(
     base_dir: str,
     mode: str,
     model_name: str,
+    embed_provider: str,
     embed_model_path: str,
+    embed_base_url: str,
+    embed_api_key: str,
     llm_base_url: str,
     llm_api_key: str,
     questions: Dict[str, List[dict]],
@@ -56,18 +110,42 @@ def process_corpus(
     os.makedirs(output_dir, exist_ok=True)
     output_path = os.path.join(output_dir, f"predictions_{corpus_name}.json")
     
-    # Initialize embedding model
-    try:
-        embedding_tokenizer = AutoTokenizer.from_pretrained(embed_model_path)
-        embedding_model = AutoModel.from_pretrained(embed_model_path)
-        logging.info(f"✅ Loaded embedding model: {embed_model_path}")
-    except Exception as e:
-        logging.error(f"❌ Failed to load embedding model: {e}")
-        return
+    # Initialize embedding service based on provider
+    if embed_provider == "api":
+        # Use OpenAI-compatible API (Zhipu, DeepSeek, etc.)
+        embedding_service = OpenAICompatibleEmbeddingService(
+            model=embed_model_path,  # e.g., "embedding-3"
+            base_url=embed_base_url,
+            api_key=embed_api_key,
+            embedding_dim=2048 if "embedding-3" in embed_model_path else 1024
+        )
+        logging.info(f"✅ Using API embedding service: {embed_model_path} at {embed_base_url}")
+    else:
+        # Use local HuggingFace model - requires transformers package
+        try:
+            from transformers import AutoTokenizer, AutoModel
+            from fast_graphrag._llm import HuggingFaceEmbeddingService as HFEmbedding
+            
+            embedding_tokenizer = AutoTokenizer.from_pretrained(embed_model_path)
+            embedding_model = AutoModel.from_pretrained(embed_model_path)
+            embedding_service = HFEmbedding(
+                model=embedding_model,
+                tokenizer=embedding_tokenizer,
+                embedding_dim=1024,
+                max_token_size=8192
+            )
+            logging.info(f"✅ Loaded local embedding model: {embed_model_path}")
+        except ImportError as e:
+            logging.error(f"❌ Local embedding requires 'transformers' package: pip install transformers")
+            return
+        except Exception as e:
+            logging.error(f"❌ Failed to load embedding model: {e}")
+            return
     
     # Initialize LLM service based on mode
     if mode == "ollama":
-        # Create Ollama client
+        # Create Ollama client (lazy import)
+        from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
         ollama_client = OllamaClient(base_url=llm_base_url)
         llm_service = OllamaWrapper(ollama_client, model_name)
         logging.info(f"✅ Using Ollama LLM service: {model_name} at {llm_base_url}")
@@ -88,18 +166,18 @@ def process_corpus(
         entity_types=ENTITY_TYPES,
         config=GraphRAG.Config(
             llm_service=llm_service,
-            embedding_service=HuggingFaceEmbeddingService(
-                model=embedding_model,
-                tokenizer=embedding_tokenizer,
-                embedding_dim=1024,
-                max_token_size=8192
-            ),
+            embedding_service=embedding_service,
         ),
     )
     
     # Index the corpus content
-    grag.insert(context)
-    logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
+    logging.info(f"🔧 Starting indexing for corpus: {corpus_name}")
+    try:
+        grag.insert(context)
+        logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
+    except Exception as e:
+        logging.error(f"❌ Indexing failed for corpus {corpus_name}: {e}")
+        raise
     
     # Get questions for this corpus
     corpus_questions = questions.get(corpus_name, [])
@@ -119,9 +197,25 @@ def process_corpus(
         try:
             # Execute query
             response = grag.query(q["question"])
-            context_chunks = response.to_dict()['context']['chunks']
-            contexts = [item[0]["content"] for item in context_chunks]
+            response_dict = response.to_dict()
+            logging.info(f"Query response structure: {list(response_dict.keys())}")
+            
+            # Check context structure
+            if 'context' in response_dict:
+                logging.info(f"Context keys: {list(response_dict['context'].keys())}")
+                if 'chunks' in response_dict['context']:
+                    context_chunks = response_dict['context']['chunks']
+                    logging.info(f"Found {len(context_chunks)} context chunks")
+                    contexts = [item[0]["content"] for item in context_chunks] if context_chunks else []
+                else:
+                    logging.warning("No 'chunks' key in context")
+                    contexts = []
+            else:
+                logging.warning("No 'context' key in response")
+                contexts = []
+                
             predicted_answer = response.response
+            logging.info(f"Generated answer: {predicted_answer[:100]}...")
 
             # Collect results
             results.append({
@@ -165,36 +259,65 @@ def main():
     # Core arguments
     parser.add_argument("--subset", required=True, choices=["medical", "novel"], 
                         help="Subset to process (medical or novel)")
-    parser.add_argument("--base_dir", default="./Examples/graphrag_workspace", 
+    parser.add_argument("--base_dir", default="./fast-graphrag_workspace", 
                         help="Base working directory for GraphRAG")
     
-    # Model configuration
+    # LLM configuration
     parser.add_argument("--mode", choices=["API", "ollama"], default="API",
                         help="Use API or ollama for LLM")
-    parser.add_argument("--model_name", default="qwen2.5-14b-instruct", 
+    parser.add_argument("--model_name", default="deepseek-chat", 
                         help="LLM model identifier")
-    parser.add_argument("--embed_model_path", default="/home/xzs/data/model/bge-large-en-v1.5", 
-                        help="Path to embedding model directory")
-    parser.add_argument("--sample", type=int, default=None, 
-                        help="Number of questions to sample per corpus")
-    
-    # API configuration
-    parser.add_argument("--llm_base_url", default="https://api.openai.com/v1", 
+    parser.add_argument("--llm_base_url", default="https://api.deepseek.com/v1", 
                         help="Base URL for LLM API")
     parser.add_argument("--llm_api_key", default="", 
                         help="API key for LLM service (can also use LLM_API_KEY environment variable)")
+    
+    # Embedding configuration
+    parser.add_argument("--embed_provider", choices=["api", "local"], default="api",
+                        help="Embedding provider: 'api' for OpenAI-compatible API, 'local' for HuggingFace model")
+    parser.add_argument("--embed_model", default="embedding-3", 
+                        help="Embedding model name (for API) or path (for local)")
+    parser.add_argument("--embed_base_url", default="https://open.bigmodel.cn/api/paas/v4", 
+                        help="Base URL for embedding API (Zhipu default)")
+    parser.add_argument("--embed_api_key", default="", 
+                        help="API key for embedding service (default: use ZHIPUAI_API_KEY env var)")
+    
+    # Other options
+    parser.add_argument("--sample", type=int, default=None, 
+                        help="Number of questions to sample per corpus")
 
     args = parser.parse_args()
     
-    # Configure logging
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        level=logging.INFO,
-        handlers=[
-            logging.StreamHandler(),
-            logging.FileHandler(f"graphrag_{args.subset}.log")
-        ]
-    )
+    # Configure logging for Windows (fix emoji encoding issues)
+    import sys
+    import locale
+    if sys.platform == "win32":
+        # Set UTF-8 encoding for Windows to handle emoji characters
+        # Also configure StreamHandler to handle UTF-8 properly
+        class UTF8StreamHandler(logging.StreamHandler):
+            def __init__(self, stream=None):
+                super().__init__(stream)
+                self.stream = sys.stdout if stream is None else stream
+                self.stream.reconfigure(encoding='utf-8')
+    
+        # Use custom handler to properly handle UTF-8
+        file_handler = logging.FileHandler(f"graphrag_{args.subset}.log", encoding='utf-8')
+        console_handler = UTF8StreamHandler()
+        
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            level=logging.INFO,
+            handlers=[console_handler, file_handler]
+        )
+    else:
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(message)s",
+            level=logging.INFO,
+            handlers=[
+                logging.StreamHandler(),
+                logging.FileHandler(f"graphrag_{args.subset}.log", encoding='utf-8')
+            ]
+        )
     
     logging.info(f"🚀 Starting GraphRAG processing for subset: {args.subset}")
     
@@ -207,10 +330,14 @@ def main():
     corpus_path = SUBSET_PATHS[args.subset]["corpus"]
     questions_path = SUBSET_PATHS[args.subset]["questions"]
     
-    # Handle API key security
-    api_key = args.llm_api_key or os.getenv("LLM_API_KEY", "")
-    if not api_key:
-        logging.warning("⚠️ No API key provided! Requests may fail.")
+    # Handle API keys
+    llm_api_key = args.llm_api_key or os.getenv("LLM_API_KEY", "")
+    if not llm_api_key:
+        logging.warning("⚠️ No LLM API key provided! Requests may fail.")
+    
+    embed_api_key = args.embed_api_key or os.getenv("ZHIPUAI_API_KEY", "")
+    if args.embed_provider == "api" and not embed_api_key:
+        logging.warning("⚠️ No embedding API key provided! Embedding requests may fail.")
     
     # Create workspace directory
     os.makedirs(args.base_dir, exist_ok=True)
@@ -232,6 +359,15 @@ def main():
     # Sample corpus data if requested
     if args.sample:
         corpus_data = corpus_data[:1]
+        # Also limit context length to avoid memory issues
+        if corpus_data:
+            max_words = 5000  # Limit to first 5000 words
+            context = corpus_data[0]["context"]
+            words = context.split()
+            if len(words) > max_words:
+                limited_context = " ".join(words[:max_words])
+                corpus_data[0]["context"] = limited_context
+                logging.info(f"Limited context to {max_words} words for testing")
     
     # Load question data
     try:
@@ -263,9 +399,12 @@ def main():
                 args.base_dir,
                 args.mode,
                 args.model_name,
-                args.embed_model_path,
+                args.embed_provider,
+                args.embed_model,
+                args.embed_base_url,
+                embed_api_key,
                 args.llm_base_url,
-                api_key,
+                llm_api_key,
                 grouped_questions,
                 args.sample,
             ))
