@@ -50,3 +50,6 @@ scripts/output/
 data/
 
 fast-graphrag_workspace/
+clearrag_workspace/
+lightrag_workspace/
+linearrag_workspace/
