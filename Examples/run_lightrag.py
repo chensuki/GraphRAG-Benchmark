@@ -4,9 +4,7 @@ import os
 import logging
 import nest_asyncio
 import argparse
-import json
 from typing import Dict, List
-from datasets import load_dataset
 
 from lightrag import LightRAG, QueryParam
 from lightrag.llm.openai import openai_complete_if_cache, openai_embed
@@ -17,25 +15,17 @@ from lightrag.kg.shared_storage import initialize_pipeline_status
 from transformers import AutoModel, AutoTokenizer
 from tqdm import tqdm
 from lightrag.llm.ollama import ollama_model_complete, ollama_embed
+from common_benchmark import (
+    build_output_path,
+    group_questions_by_source,
+    load_corpus_records,
+    load_question_records,
+    save_results_json,
+)
 
 # Apply nest_asyncio for Jupyter environments
 nest_asyncio.apply()
 logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
-
-
-def group_questions_by_source(question_list):
-    grouped_questions = {}
-
-    for question in question_list:
-        source = question.get("source")
-
-        if source not in grouped_questions:
-            grouped_questions[source] = []
-
-        grouped_questions[source].append(question)
-
-    return grouped_questions
-
 
 SYSTEM_PROMPT = """
 ---Role---
@@ -56,7 +46,7 @@ def create_llm_model_func(model_name: str, base_url: str, api_key: str):
     async def llm_model_func(
         prompt: str,
         system_prompt: str = None,
-        history_messages: list = [],
+        history_messages: list | None = None,
         keyword_extraction: bool = False,
         **kwargs
     ) -> str:
@@ -83,11 +73,13 @@ def create_llm_model_func(model_name: str, base_url: str, api_key: str):
                     f"Please verify your API key is correct."
                 )
         
+        final_history_messages = history_messages or []
+
         return await openai_complete_if_cache(
             final_model_name,
             prompt,
             system_prompt=system_prompt,
-            history_messages=history_messages,
+            history_messages=final_history_messages,
             base_url=final_base_url,
             api_key=final_api_key,
             keyword_extraction=keyword_extraction,
@@ -207,7 +199,8 @@ async def process_corpus(
     questions: List[dict],
     sample: int,
     retrieve_topk: int,
-    skip_build: bool = False
+    skip_build: bool = False,
+    output_dir_root: str = "./results/lightrag",
 ):
     """Process a single corpus: index it and answer its questions"""
     logging.info(f"📚 Processing corpus: {corpus_name}")
@@ -245,9 +238,8 @@ async def process_corpus(
     logging.info(f"🔍 Found {len(corpus_questions)} questions for {corpus_name}")
     
     # Prepare output path
-    output_dir = f"./results/lightrag/{corpus_name}"
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"predictions_{corpus_name}.json")
+    output_dir = os.path.join(output_dir_root, corpus_name)
+    output_path = build_output_path(output_dir, f"predictions_{corpus_name}.json")
     
     # Process questions
     results = []
@@ -369,8 +361,7 @@ async def process_corpus(
         })
     
     # Save results
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
+    save_results_json(output_path, results)
     
     logging.info(f"💾 Saved {len(results)} predictions to: {output_path}")
 
@@ -397,6 +388,7 @@ def main():
     parser.add_argument("--subset", required=True, choices=["medical", "novel", "hotpotqa"], 
                         help="Subset to process (medical, novel, or hotpotqa)")
     parser.add_argument("--base_dir", default="./lightrag_workspace", help="Base working directory")
+    parser.add_argument("--output_dir", default="./results/lightrag", help="Output directory for predictions")
     
     # Model configuration
     parser.add_argument("--mode", required=True, choices=["API", "ollama"], help="Use API or ollama for LLM")
@@ -422,7 +414,7 @@ def main():
         logging.error(f"Invalid subset: {args.subset}. Valid options: {list(SUBSET_PATHS.keys())}")
         return
     if args.mode not in ["API", "ollama"]:
-        logging.error(f'Invalid mode: {args.subset}. Valid options: {["API", "ollama"]}')
+        logging.error(f'Invalid mode: {args.mode}. Valid options: {["API", "ollama"]}')
         return
     
     # Get file paths for this subset
@@ -446,13 +438,7 @@ def main():
     
     # Load corpus data
     try:
-        corpus_dataset = load_dataset("parquet", data_files=corpus_path, split="train")
-        corpus_data = []
-        for item in corpus_dataset:
-            corpus_data.append({
-                "corpus_name": item["corpus_name"],
-                "context": item["context"]
-            })
+        corpus_data = load_corpus_records(corpus_path)
         logging.info(f"Loaded corpus with {len(corpus_data)} documents from {corpus_path}")
     except Exception as e:
         logging.error(f"Failed to load corpus: {e}")
@@ -464,17 +450,7 @@ def main():
 
     # Load question data
     try:
-        questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-        question_data = []
-        for item in questions_dataset:
-            question_data.append({
-                "id": item["id"],
-                "source": item["source"],
-                "question": item["question"],
-                "answer": item["answer"],
-                "question_type": item["question_type"],
-                "evidence": item["evidence"]
-            })
+        question_data = load_question_records(questions_path)
         grouped_questions = group_questions_by_source(question_data)
         logging.info(f"Loaded questions with {len(question_data)} entries from {questions_path}")
     except Exception as e:
@@ -500,7 +476,8 @@ def main():
                     questions=grouped_questions,
                     sample=args.sample,
                     retrieve_topk=args.retrieve_topk,
-                    skip_build=args.skip_build
+                    skip_build=args.skip_build,
+                    output_dir_root=args.output_dir,
                 )
             )
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -512,4 +489,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

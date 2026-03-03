@@ -3,17 +3,23 @@ import sys
 import os
 import logging
 import argparse
-import json
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import numpy as np
 from dotenv import load_dotenv
-from datasets import load_dataset
 from fast_graphrag import GraphRAG
 from fast_graphrag._llm import OpenAILLMService
 from fast_graphrag._llm._base import BaseEmbeddingService
 from tqdm import tqdm
 import httpx
+from common_benchmark import (
+    build_output_path,
+    build_error_result,
+    group_questions_by_source,
+    load_corpus_records,
+    load_question_records,
+    save_results_json,
+)
 
 # Add project root to path for local imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -76,17 +82,6 @@ class OpenAICompatibleEmbeddingService(BaseEmbeddingService):
                 logging.error(f"Embedding API error: {e.response.status_code} - {e.response.text}")
                 raise
 
-
-def group_questions_by_source(question_list: List[dict]) -> Dict[str, List[dict]]:
-    """Group questions by their source"""
-    grouped_questions = {}
-    for question in question_list:
-        source = question.get("source")
-        if source not in grouped_questions:
-            grouped_questions[source] = []
-        grouped_questions[source].append(question)
-    return grouped_questions
-
 def process_corpus(
     corpus_name: str,
     context: str,
@@ -100,15 +95,16 @@ def process_corpus(
     llm_base_url: str,
     llm_api_key: str,
     questions: Dict[str, List[dict]],
-    sample: int
+    sample: int,
+    output_dir_root: str = "./results/fast-graphrag",
+    skip_build: bool = False,
 ):
     """Process a single corpus: index it and answer its questions"""
     logging.info(f"📚 Processing corpus: {corpus_name}")
     
     # Prepare output directory
-    output_dir = f"./results/fast-graphrag/{corpus_name}"
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"predictions_{corpus_name}.json")
+    output_dir = os.path.join(output_dir_root, corpus_name)
+    output_path = build_output_path(output_dir, f"predictions_{corpus_name}.json")
     
     # Initialize embedding service based on provider
     if embed_provider == "api":
@@ -171,13 +167,16 @@ def process_corpus(
     )
     
     # Index the corpus content
-    logging.info(f"🔧 Starting indexing for corpus: {corpus_name}")
-    try:
-        grag.insert(context)
-        logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
-    except Exception as e:
-        logging.error(f"❌ Indexing failed for corpus {corpus_name}: {e}")
-        raise
+    if not skip_build:
+        logging.info(f"🔧 Starting indexing for corpus: {corpus_name}")
+        try:
+            grag.insert(context)
+            logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
+        except Exception as e:
+            logging.error(f"❌ Indexing failed for corpus {corpus_name}: {e}")
+            raise
+    else:
+        logging.info(f"⏭️  Skipping indexing (assuming corpus {corpus_name} is already indexed)")
     
     # Get questions for this corpus
     corpus_questions = questions.get(corpus_name, [])
@@ -230,14 +229,10 @@ def process_corpus(
             })
         except Exception as e:
             logging.error(f"❌ Error processing question {q.get('id')}: {e}")
-            results.append({
-                "id": q["id"],
-                "error": str(e)
-            })
+            results.append(build_error_result(q, corpus_name, e))
     
     # Save results
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
+    save_results_json(output_path, results)
     
     logging.info(f"💾 Saved {len(results)} predictions to: {output_path}")
 
@@ -261,6 +256,8 @@ def main():
                         help="Subset to process (medical or novel)")
     parser.add_argument("--base_dir", default="./fast-graphrag_workspace", 
                         help="Base working directory for GraphRAG")
+    parser.add_argument("--output_dir", default="./results/fast-graphrag",
+                        help="Output directory for predictions")
     
     # LLM configuration
     parser.add_argument("--mode", choices=["API", "ollama"], default="API",
@@ -285,12 +282,13 @@ def main():
     # Other options
     parser.add_argument("--sample", type=int, default=None, 
                         help="Number of questions to sample per corpus")
+    parser.add_argument("--skip-build", action="store_true",
+                        help="Skip indexing phase and reuse existing index")
 
     args = parser.parse_args()
     
     # Configure logging for Windows (fix emoji encoding issues)
     import sys
-    import locale
     if sys.platform == "win32":
         # Set UTF-8 encoding for Windows to handle emoji characters
         # Also configure StreamHandler to handle UTF-8 properly
@@ -344,13 +342,7 @@ def main():
     
     # Load corpus data
     try:
-        corpus_dataset = load_dataset("parquet", data_files=corpus_path, split="train")
-        corpus_data = []
-        for item in corpus_dataset:
-            corpus_data.append({
-                "corpus_name": item["corpus_name"],
-                "context": item["context"]
-            })
+        corpus_data = load_corpus_records(corpus_path)
         logging.info(f"📖 Loaded corpus with {len(corpus_data)} documents from {corpus_path}")
     except Exception as e:
         logging.error(f"❌ Failed to load corpus: {e}")
@@ -371,17 +363,7 @@ def main():
     
     # Load question data
     try:
-        questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-        question_data = []
-        for item in questions_dataset:
-            question_data.append({
-                "id": item["id"],
-                "source": item["source"],
-                "question": item["question"],
-                "answer": item["answer"],
-                "question_type": item["question_type"],
-                "evidence": item["evidence"]
-            })
+        question_data = load_question_records(questions_path)
         grouped_questions = group_questions_by_source(question_data)
         logging.info(f"❓ Loaded questions with {len(question_data)} entries from {questions_path}")
     except Exception as e:
@@ -407,6 +389,8 @@ def main():
                 llm_api_key,
                 grouped_questions,
                 args.sample,
+                args.output_dir,
+                args.skip_build,
             ))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:

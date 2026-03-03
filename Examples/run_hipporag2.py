@@ -1,26 +1,27 @@
 import os
 import asyncio
 import argparse
-import json
 import logging
 from typing import Dict, List
 from dotenv import load_dotenv
-from pathlib import Path
-from datasets import load_dataset
 from transformers import AutoTokenizer
 from tqdm import tqdm
+from common_benchmark import (
+    build_output_path,
+    build_error_result,
+    ensure_context_list,
+    group_questions_by_source,
+    load_corpus_records,
+    load_question_records,
+    save_results_json,
+)
 
 # Load environment variables
 load_dotenv()
 
-# Set CUDA device
-os.environ["CUDA_VISIBLE_DEVICES"] = "5"
-
 # Import HippoRAG components after setting environment
 from hipporag.HippoRAG import HippoRAG
-from hipporag.utils.misc_utils import string_to_bool
 from hipporag.utils.config_utils import BaseConfig
-from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
 
 # Configure logging
 logging.basicConfig(
@@ -31,16 +32,6 @@ logging.basicConfig(
         logging.FileHandler("hipporag_processing.log")
     ]
 )
-
-def group_questions_by_source(question_list: List[dict]) -> Dict[str, List[dict]]:
-    """Group questions by their source"""
-    grouped_questions = {}
-    for question in question_list:
-        source = question.get("source")
-        if source not in grouped_questions:
-            grouped_questions[source] = []
-        grouped_questions[source].append(question)
-    return grouped_questions
 
 def split_text(
     text: str, 
@@ -76,16 +67,18 @@ def process_corpus(
     embed_model_path: str,
     llm_base_url: str,
     llm_api_key: str,
+    top_k: int,
     questions: Dict[str, List[dict]],
-    sample: int
+    sample: int,
+    output_dir_root: str = "./results/hipporag2",
+    skip_build: bool = False,
 ):
     """Process a single corpus: index it and answer its questions"""
     logging.info(f"📚 Processing corpus: {corpus_name}")
     
     # Prepare output directory
-    output_dir = f"./results/hipporag2/{corpus_name}"
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"predictions_{corpus_name}.json")
+    output_dir = os.path.join(output_dir_root, corpus_name)
+    output_path = build_output_path(output_dir, f"predictions_{corpus_name}.json")
     
     # Initialize tokenizer for text splitting
     try:
@@ -124,13 +117,13 @@ def process_corpus(
         llm_base_url=llm_base_url,
         llm_name=model_name,
         embedding_model_name=embed_model_path,
-        force_index_from_scratch=True,
-        force_openie_from_scratch=True,
+        force_index_from_scratch=not skip_build,
+        force_openie_from_scratch=not skip_build,
         rerank_dspy_file_path="hipporag/prompts/dspy_prompts/filter_llama3.3-70B-Instruct.json",
-        retrieval_top_k=5,
-        linking_top_k=5,
+        retrieval_top_k=top_k,
+        linking_top_k=top_k,
         max_qa_steps=3,
-        qa_top_k=5,
+        qa_top_k=top_k,
         graph_type="facts_and_sim_passage_node_unidirectional",
         embedding_batch_size=8,
         max_new_tokens=None,
@@ -150,14 +143,25 @@ def process_corpus(
     hipporag = HippoRAG(global_config=config)
     
     # Index the corpus content
-    hipporag.index(docs)
-    logging.info(f"✅ Indexed corpus: {corpus_name}")
+    if not skip_build:
+        hipporag.index(docs)
+        logging.info(f"✅ Indexed corpus: {corpus_name}")
+    else:
+        logging.info(f"⏭️  Skipping indexing (assuming corpus {corpus_name} is already indexed)")
     
     # Process questions
     results = []
 
-    queries_solutions, _, _, _, _ = hipporag.rag_qa(queries=all_queries, gold_docs=None, gold_answers=gold_answers)
-    solutions = [query.to_dict() for query in queries_solutions]
+    try:
+        queries_solutions, _, _, _, _ = hipporag.rag_qa(
+            queries=all_queries,
+            gold_docs=None,
+            gold_answers=gold_answers,
+        )
+        solutions = [query.to_dict() for query in queries_solutions]
+    except Exception as e:
+        logging.error(f"❌ Batch QA failed for corpus {corpus_name}: {e}")
+        solutions = []
     
     for question in corpus_questions:
         solution = next((sol for sol in solutions if sol['question'] == question['question']), None)
@@ -166,16 +170,23 @@ def process_corpus(
                 "id": question["id"],
                 "question": question["question"],
                 "source": corpus_name,
-                "context": solution.get("docs", ""),
+                "context": ensure_context_list(solution.get("docs", [])),
                 "evidence": question.get("evidence", ""),
                 "question_type": question.get("question_type", ""),
                 "generated_answer": solution.get("answer", ""),
                 "ground_truth": question.get("answer", "")
             })
+        else:
+            results.append(
+                build_error_result(
+                    question,
+                    corpus_name,
+                    LookupError("No matching HippoRAG solution for question"),
+                )
+            )
     
     # Save results
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
+    save_results_json(output_path, results)
     
     logging.info(f"💾 Saved {len(results)} predictions to: {output_path}")
 
@@ -199,6 +210,8 @@ def main():
                         help="Subset to process (medical or novel)")
     parser.add_argument("--base_dir", default="./hipporag2_workspace", 
                         help="Base working directory for HippoRAG")
+    parser.add_argument("--output_dir", default="./results/hipporag2",
+                        help="Output directory for predictions")
     
     # Model configuration
     parser.add_argument("--mode", choices=["API", "ollama"], default="API",
@@ -209,6 +222,10 @@ def main():
                         help="Path to embedding model directory")
     parser.add_argument("--sample", type=int, default=None, 
                         help="Number of questions to sample per corpus")
+    parser.add_argument("--top_k", type=int, default=5,
+                        help="Unified top-k for retrieval/linking/qa")
+    parser.add_argument("--skip-build", action="store_true",
+                        help="Skip indexing phase and reuse existing index")
     
     # API configuration
     parser.add_argument("--llm_base_url", default="https://api.openai.com/v1", 
@@ -239,13 +256,7 @@ def main():
     
     # Load corpus data
     try:
-        corpus_dataset = load_dataset("parquet", data_files=corpus_path, split="train")
-        corpus_data = []
-        for item in corpus_dataset:
-            corpus_data.append({
-                "corpus_name": item["corpus_name"],
-                "context": item["context"]
-            })
+        corpus_data = load_corpus_records(corpus_path)
         logging.info(f"📖 Loaded corpus with {len(corpus_data)} documents from {corpus_path}")
     except Exception as e:
         logging.error(f"❌ Failed to load corpus: {e}")
@@ -257,17 +268,7 @@ def main():
     
     # Load question data
     try:
-        questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-        question_data = []
-        for item in questions_dataset:
-            question_data.append({
-                "id": item["id"],
-                "source": item["source"],
-                "question": item["question"],
-                "answer": item["answer"],
-                "question_type": item["question_type"],
-                "evidence": item["evidence"]
-            })
+        question_data = load_question_records(questions_path)
         grouped_questions = group_questions_by_source(question_data)
         logging.info(f"❓ Loaded questions with {len(question_data)} entries from {questions_path}")
     except Exception as e:
@@ -288,8 +289,11 @@ def main():
                 args.embed_model_path,
                 args.llm_base_url,
                 api_key,
+                args.top_k,
                 grouped_questions,
                 args.sample,
+                args.output_dir,
+                args.skip_build,
             ))
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:

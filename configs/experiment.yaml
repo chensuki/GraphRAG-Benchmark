@@ -1,0 +1,87 @@
+run:
+  framework: lightrag
+  continue_on_error: false
+  enforce_common: true
+  run_id: exp-001
+
+paths:
+  workspace_root: ./workspaces
+  prediction_root: ./results/predictions
+  evaluation_root: ./results/evaluations
+
+common:
+  subset: medical
+  sample: 10
+  seed: 42
+
+  llm:
+    mode: API
+    model: deepseek-chat
+    base_url: https://api.deepseek.com/v1
+    api_key: ""
+
+  embed:
+    provider: api
+    name: embedding-3
+    base_url: https://open.bigmodel.cn/api/paas/v4
+    api_key: ""
+
+  retrieval:
+    top_k: 10
+
+  neo4j:
+    uri: "bolt://localhost:7687"
+    user: "neo4j"
+    password: "neo4jneo4j"
+    database: "neo4j"
+
+frameworks:
+  lightrag:
+    enabled: true
+    subset: medical
+    mode: API
+    base_dir: ./lightrag_workspace
+    output_dir: ./results/lightrag/{run_id}
+    embed_provider: zhipu
+    embed_model: embedding-3
+    skip_build: true
+
+  clearrag:
+    enabled: true
+    subset: medical
+    base_dir: ./clearrag_workspace
+    linear_data_dir: ./clearrag_workspace/Medical/data/linear
+    activation_mode: semantic_propagation
+    passage_retrieval_mode: pagerank
+    max_concurrency: 5
+    corpus_concurrency: 2
+    output_dir: ./results/clearrag/{run_id}
+    skip_build: true
+    fast: false
+
+  fast-graphrag:
+    enabled: true
+    subset: medical
+    mode: API
+    base_dir: ./fast-graphrag_workspace
+    output_dir: ./results/fast-graphrag/{run_id}
+    skip_build: true
+    embed_provider: api
+    embed_model: embedding-3
+    embed_base_url: https://open.bigmodel.cn/api/paas/v4
+
+  hipporag2:
+    enabled: true
+    subset: medical
+    mode: API
+    base_dir: ./hipporag2_workspace
+    output_dir: ./results/hipporag2/{run_id}
+    embed_model_path: BAAI/bge-large-en-v1.5
+    skip_build: true
+
+  digimon:
+    enabled: false
+    subset: medical
+    mode: config
+    config: ./config.yml
+    output_dir: ./results/GraphRAG/{run_id}

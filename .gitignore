@@ -38,6 +38,7 @@ env/
 *.seed
 *.pid.lock
 *.pyc
+__pycache__/*.pyc.*
 
 # 监控和日志
 logs/

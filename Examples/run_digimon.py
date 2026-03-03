@@ -1,33 +1,26 @@
 import os
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 import logging
 import argparse
 import asyncio
-import json
 from pathlib import Path
 from tqdm import tqdm
 from typing import Dict, List
-from datasets import load_dataset
+from common_benchmark import (
+    build_output_path,
+    build_error_result,
+    ensure_context_list,
+    group_questions_by_source,
+    load_corpus_records,
+    load_question_records,
+    save_results_json,
+)
 
 from Core.GraphRAG import GraphRAG
 from Option.Config2 import Config
-from Data.QueryDataset import RAGQueryDataset
-from Core.Utils.Evaluation import Evaluator
-from Evaluation.llm.ollama_client import OllamaClient, OllamaWrapper
 
 # Configure logging
 logging.basicConfig(format="%(levelname)s:%(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def group_questions_by_source(question_list: List[dict]) -> Dict[str, List[dict]]:
-    """Group questions by their source"""
-    grouped_questions = {}
-    for question in question_list:
-        source = question.get("source")
-        if source not in grouped_questions:
-            grouped_questions[source] = []
-        grouped_questions[source].append(question)
-    return grouped_questions
 
 async def initialize_rag(
     config_path: Path,
@@ -99,33 +92,30 @@ async def process_corpus(
     logger.info(f"🔍 Found {len(corpus_questions)} questions for {corpus_name}")
     
     # Prepare output
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{corpus_name}_predictions.json")
+    output_path = build_output_path(output_dir, f"{corpus_name}_predictions.json")
     
     # Process questions
     results = []
     for q in tqdm(corpus_questions, desc=f"Answering questions for {corpus_name}"):
         try:
             response, context = await rag.query(q["question"])
+            context_list = ensure_context_list(context)
             results.append({
                 "id": q["id"],
                 "source": corpus_name,
                 "question": q["question"],
-                "context": context,
+                "context": context_list,
                 "generated_answer": response,
                 "ground_truth": q.get("answer"),
-                "question_type": q.get("question_type", "unknown")
+                "question_type": q.get("question_type", "unknown"),
+                "evidence": q.get("evidence", "")
             })
         except Exception as e:
             logger.error(f"❌ Failed to process question {q['id']}: {e}")
-            results.append({
-                "id": q["id"],
-                "error": str(e)
-            })
+            results.append(build_error_result(q, corpus_name, e, question_type_default="unknown"))
     
     # Save results
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(results, f, indent=2, ensure_ascii=False)
+    save_results_json(output_path, results)
     logger.info(f"💾 Saved {len(results)} predictions to: {output_path}")
     
     return results
@@ -180,10 +170,8 @@ def main():
     
     # Load corpus data
     try:
-        corpus_dataset = load_dataset("parquet", data_files=corpus_path, split="train")
-        corpus_data = {}
-        for item in corpus_dataset:
-            corpus_data[item["corpus_name"]] = item["context"]
+        corpus_records = load_corpus_records(corpus_path)
+        corpus_data = {item["corpus_name"]: item["context"] for item in corpus_records}
         logger.info(f"📖 Loaded corpus with {len(corpus_data)} documents from {corpus_path}")
     except Exception as e:
         logger.error(f"❌ Failed to load corpus: {e}")
@@ -196,17 +184,7 @@ def main():
     
     # Load question data
     try:
-        questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-        question_data = []
-        for item in questions_dataset:
-            question_data.append({
-                "id": item["id"],
-                "source": item["source"],
-                "question": item["question"],
-                "answer": item["answer"],
-                "question_type": item["question_type"],
-                "evidence": item["evidence"]
-            })
+        question_data = load_question_records(questions_path)
         grouped_questions = group_questions_by_source(question_data)
         logger.info(f"❓ Loaded questions with {len(question_data)} entries from {questions_path}")
     except Exception as e:

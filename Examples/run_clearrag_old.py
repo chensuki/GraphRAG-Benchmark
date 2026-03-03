@@ -12,12 +12,17 @@ import os
 import sys
 import asyncio
 import argparse
-import json
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional
-from datasets import load_dataset
 from tqdm import tqdm
+from common_benchmark import (
+    build_output_path,
+    group_questions_by_source,
+    load_corpus_records,
+    load_question_records,
+    save_results_json,
+)
 
 # 配置日志（在导入之前配置，避免后续代码使用未初始化的 logger）
 logging.basicConfig(
@@ -132,18 +137,6 @@ except ImportError as e:
     
     sys.exit(1)
 
-
-def group_questions_by_source(question_list: List[dict]) -> Dict[str, List[dict]]:
-    """按语料库名称分组问题"""
-    grouped_questions = {}
-    for question in question_list:
-        source = question.get("source")
-        if source not in grouped_questions:
-            grouped_questions[source] = []
-        grouped_questions[source].append(question)
-    return grouped_questions
-
-
 async def process_corpus(
     corpus_name: str,
     context: str,
@@ -235,8 +228,7 @@ async def process_corpus(
         logger.info(f"🔍 找到 {len(corpus_questions)} 个问题")
         
         # 4. 准备输出路径
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, f"predictions_{corpus_name}.json")
+        output_path = build_output_path(output_dir, f"predictions_{corpus_name}.json")
         
         # 5. 处理问题
         results = []
@@ -291,8 +283,7 @@ async def process_corpus(
                 })
         
         # 6. 保存结果
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
+        save_results_json(output_path, results)
         
         logger.info(f"💾 已保存 {len(results)} 个预测结果到: {output_path}")
         
@@ -563,35 +554,9 @@ def main():
     if args.neo4j_database:
         init_kwargs["neo4j_database"] = args.neo4j_database
     
-    # 加载语料库数据（支持 Parquet 和 JSON 格式）
+    # 加载语料库数据
     try:
-        if corpus_path.endswith('.json'):
-            # 加载 JSON 格式
-            with open(corpus_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                # 单个语料项（字典格式）
-                corpus_data = [{
-                    "corpus_name": data.get("corpus_name", "Unknown"),
-                    "context": data.get("context", "")
-                }]
-            elif isinstance(data, list):
-                # 多个语料项（列表格式）
-                corpus_data = [{
-                    "corpus_name": item.get("corpus_name", "Unknown"),
-                    "context": item.get("context", "")
-                } for item in data]
-            else:
-                raise ValueError(f"不支持的 JSON 格式: {type(data)}")
-        else:
-            # 加载 Parquet 格式
-            corpus_dataset = load_dataset("parquet", data_files=corpus_path, split="train")
-            corpus_data = []
-            for item in corpus_dataset:
-                corpus_data.append({
-                    "corpus_name": item["corpus_name"],
-                    "context": item["context"]
-                })
+        corpus_data = load_corpus_records(corpus_path)
         logger.info(f"📖 已加载 {len(corpus_data)} 个语料库文档")
     except Exception as e:
         logger.error(f"❌ 加载语料库失败: {e}")
@@ -602,36 +567,9 @@ def main():
         corpus_data = corpus_data[:1]
         logger.info(f"🔍 采样了 1 个语料库（用于测试）")
     
-    # 加载问题数据（支持 Parquet 和 JSON 格式）
+    # 加载问题数据
     try:
-        if questions_path.endswith('.json'):
-            # 加载 JSON 格式
-            with open(questions_path, 'r', encoding='utf-8') as f:
-                question_data = json.load(f)
-            if not isinstance(question_data, list):
-                raise ValueError(f"问题数据必须是列表格式，当前格式: {type(question_data)}")
-            # 确保所有必需字段存在
-            question_data = [{
-                "id": item.get("id", ""),
-                "source": item.get("source", ""),
-                "question": item.get("question", ""),
-                "answer": item.get("answer", ""),
-                "question_type": item.get("question_type", ""),
-                "evidence": item.get("evidence", "")
-            } for item in question_data]
-        else:
-            # 加载 Parquet 格式
-            questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-            question_data = []
-            for item in questions_dataset:
-                question_data.append({
-                    "id": item["id"],
-                    "source": item["source"],
-                    "question": item["question"],
-                    "answer": item["answer"],
-                    "question_type": item["question_type"],
-                    "evidence": item["evidence"]
-                })
+        question_data = load_question_records(questions_path)
         grouped_questions = group_questions_by_source(question_data)
         logger.info(f"❓ 已加载 {len(question_data)} 个问题")
     except Exception as e:
