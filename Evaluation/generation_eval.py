@@ -161,7 +161,7 @@ async def main(args: argparse.Namespace):
             api_key=SecretStr(api_key),
             temperature=0.0,
             max_retries=3,
-            timeout=30,
+            timeout=120,
             top_p=1,
             seed=SEED,
             presence_penalty=0,

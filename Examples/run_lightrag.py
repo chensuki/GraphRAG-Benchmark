@@ -372,6 +372,10 @@ def main():
             "corpus": "./Datasets/Corpus/medical.parquet",
             "questions": "./Datasets/Questions/medical_questions.parquet"
         },
+        "medical_100": {
+            "corpus": "./Datasets/Corpus/medical.parquet",
+            "questions": "./Datasets/Questions/medical_questions_100_balanced.json"
+        },
         "novel": {
             "corpus": "./Datasets/Corpus/novel.parquet",
             "questions": "./Datasets/Questions/novel_questions.parquet"
@@ -385,8 +389,8 @@ def main():
     parser = argparse.ArgumentParser(description="LightRAG: Process Corpora and Answer Questions")
     
     # Core arguments
-    parser.add_argument("--subset", required=True, choices=["medical", "novel", "hotpotqa"], 
-                        help="Subset to process (medical, novel, or hotpotqa)")
+    parser.add_argument("--subset", required=True, choices=["medical", "medical_100", "novel", "hotpotqa"], 
+                        help="Subset to process (medical, medical_100, novel, or hotpotqa)")
     parser.add_argument("--base_dir", default="./lightrag_workspace", help="Base working directory")
     parser.add_argument("--output_dir", default="./results/lightrag", help="Output directory for predictions")
     

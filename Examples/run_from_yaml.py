@@ -18,7 +18,7 @@ SUPPORTED_FRAMEWORKS = [
 ]
 
 SUPPORTED_SUBSETS: Dict[str, set[str]] = {
-    "lightrag": {"medical", "novel", "hotpotqa"},
+    "lightrag": {"medical", "medical_100", "novel", "hotpotqa"},
     "clearrag": {"medical", "novel", "medical_100", "hotpotqa"},
     "fast-graphrag": {"medical", "novel"},
     "hipporag2": {"medical", "novel"},

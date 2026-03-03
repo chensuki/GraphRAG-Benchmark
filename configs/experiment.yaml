@@ -10,8 +10,8 @@ paths:
   evaluation_root: ./results/evaluations
 
 common:
-  subset: medical
-  sample: 10
+  subset: medical_100
+  sample: 
   seed: 42
 
   llm:
