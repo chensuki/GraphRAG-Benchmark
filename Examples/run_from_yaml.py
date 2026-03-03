@@ -8,22 +8,9 @@ from typing import Any, Dict, List
 
 import yaml
 
+from subset_registry import FRAMEWORK_SUPPORTED_SUBSETS
 
-SUPPORTED_FRAMEWORKS = [
-    "lightrag",
-    "clearrag",
-    "fast-graphrag",
-    "hipporag2",
-    "digimon",
-]
-
-SUPPORTED_SUBSETS: Dict[str, set[str]] = {
-    "lightrag": {"medical", "medical_100", "novel", "hotpotqa"},
-    "clearrag": {"medical", "novel", "medical_100", "hotpotqa"},
-    "fast-graphrag": {"medical", "novel"},
-    "hipporag2": {"medical", "novel"},
-    "digimon": {"medical", "novel"},
-}
+SUPPORTED_FRAMEWORKS = list(FRAMEWORK_SUPPORTED_SUBSETS.keys())
 
 def is_empty(value: Any) -> bool:
     return value is None or value == ""
@@ -296,7 +283,7 @@ def build_command(framework: str, config: Dict[str, Any]) -> List[str]:
     run_cfg = config.get("run", {})
     enforce_common = run_cfg.get("enforce_common", True)
     subset = merge_value(common.get("subset", "medical"), fw.get("subset"), enforce_common)
-    allowed = SUPPORTED_SUBSETS.get(framework, set())
+    allowed = set(FRAMEWORK_SUPPORTED_SUBSETS.get(framework, ()))
     if allowed and subset not in allowed:
         raise ValueError(
             f"Framework '{framework}' does not support subset '{subset}'. "

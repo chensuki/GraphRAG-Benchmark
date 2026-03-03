@@ -22,6 +22,7 @@ from common_benchmark import (
     load_question_records,
     save_results_json,
 )
+from subset_registry import get_subset_paths, get_supported_subsets
 
 # Apply nest_asyncio for Jupyter environments
 nest_asyncio.apply()
@@ -366,31 +367,17 @@ async def process_corpus(
     logging.info(f"💾 Saved {len(results)} predictions to: {output_path}")
 
 def main():
-    # Define subset paths
-    SUBSET_PATHS = {
-        "medical": {
-            "corpus": "./Datasets/Corpus/medical.parquet",
-            "questions": "./Datasets/Questions/medical_questions.parquet"
-        },
-        "medical_100": {
-            "corpus": "./Datasets/Corpus/medical.parquet",
-            "questions": "./Datasets/Questions/medical_questions_100_balanced.json"
-        },
-        "novel": {
-            "corpus": "./Datasets/Corpus/novel.parquet",
-            "questions": "./Datasets/Questions/novel_questions.parquet"
-        },
-        "hotpotqa": {
-            "corpus": "./Datasets/Corpus/hotpotqa.parquet",
-            "questions": "./Datasets/Questions/hotpotqa_questions.json"
-        }
-    }
-    
+    supported_subsets = get_supported_subsets("lightrag")
+
     parser = argparse.ArgumentParser(description="LightRAG: Process Corpora and Answer Questions")
     
     # Core arguments
-    parser.add_argument("--subset", required=True, choices=["medical", "medical_100", "novel", "hotpotqa"], 
-                        help="Subset to process (medical, medical_100, novel, or hotpotqa)")
+    parser.add_argument(
+        "--subset",
+        required=True,
+        choices=supported_subsets,
+        help=f"Subset to process ({', '.join(supported_subsets)})",
+    )
     parser.add_argument("--base_dir", default="./lightrag_workspace", help="Base working directory")
     parser.add_argument("--output_dir", default="./results/lightrag", help="Output directory for predictions")
     
@@ -413,17 +400,17 @@ def main():
 
     args = parser.parse_args()
     
-    # Validate subset and mode
-    if args.subset not in SUBSET_PATHS:
-        logging.error(f"Invalid subset: {args.subset}. Valid options: {list(SUBSET_PATHS.keys())}")
-        return
+    # Validate mode
     if args.mode not in ["API", "ollama"]:
         logging.error(f'Invalid mode: {args.mode}. Valid options: {["API", "ollama"]}')
         return
     
     # Get file paths for this subset
-    corpus_path = SUBSET_PATHS[args.subset]["corpus"]
-    questions_path = SUBSET_PATHS[args.subset]["questions"]
+    try:
+        corpus_path, questions_path = get_subset_paths(args.subset)
+    except ValueError as e:
+        logging.error(str(e))
+        return
     
     # Handle API key security
     api_key = args.llm_api_key or os.getenv("LLM_API_KEY", "")

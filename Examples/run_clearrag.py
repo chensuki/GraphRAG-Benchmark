@@ -42,6 +42,7 @@ from common_benchmark import (
     load_question_records,
     save_results_json,
 )
+from subset_registry import get_subset_paths, get_supported_subsets
 
 # 配置日志
 logging.basicConfig(
@@ -249,7 +250,7 @@ def main():
     parser.add_argument(
         "--subset",
         required=True,
-        choices=["medical", "novel", "medical_100", "hotpotqa"],
+        choices=get_supported_subsets("clearrag"),
         help="要处理的数据子集"
     )
 
@@ -333,28 +334,11 @@ def main():
 
     args = parser.parse_args()
 
-    # 定义数据路径
-    SUBSET_PATHS = {
-        "medical": {
-            "corpus": "./Datasets/Corpus/medical.parquet",
-            "questions": "./Datasets/Questions/medical_questions.parquet"
-        },
-        "novel": {
-            "corpus": "./Datasets/Corpus/novel.parquet",
-            "questions": "./Datasets/Questions/novel_questions.parquet"
-        },
-        "medical_100": {
-            "corpus": "./Datasets/Corpus/medical.parquet",
-            "questions": "./Datasets/Questions/medical_questions_100_balanced.json"
-        },
-        "hotpotqa": {
-            "corpus": "./Datasets/Corpus/hotpotqa.parquet",
-            "questions": "./Datasets/Questions/hotpotqa_questions.json"
-        }
-    }
-
-    corpus_path = SUBSET_PATHS[args.subset]["corpus"]
-    questions_path = SUBSET_PATHS[args.subset]["questions"]
+    try:
+        corpus_path, questions_path = get_subset_paths(args.subset)
+    except ValueError as e:
+        logger.error(str(e))
+        return
 
     # 验证环境变量
     required_env_vars = ["LLM_API_KEY", "EMBED_API_KEY", "NEO4J_URI", "NEO4J_USER", "NEO4J_PASSWORD"]

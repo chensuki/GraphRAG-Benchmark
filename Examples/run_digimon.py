@@ -14,6 +14,7 @@ from common_benchmark import (
     load_question_records,
     save_results_json,
 )
+from subset_registry import get_subset_paths, get_supported_subsets
 
 from Core.GraphRAG import GraphRAG
 from Option.Config2 import Config
@@ -121,23 +122,17 @@ async def process_corpus(
     return results
 
 def main():
-    # Define default paths
-    DEFAULT_PATHS = {
-        "medical": {
-            "corpus_path": "./Datasets/Corpus/medical.parquet",
-            "questions_path": "./Datasets/Questions/medical_questions.parquet"
-        },
-        "novel": {
-            "corpus_path": "./Datasets/Corpus/novel.parquet",
-            "questions_path": "./Datasets/Questions/novel_questions.parquet"
-        }
-    }
-    
+    supported_subsets = get_supported_subsets("digimon")
+
     parser = argparse.ArgumentParser(description="GraphRAG: Process Corpora and Answer Questions")
     
     # Core arguments
-    parser.add_argument("--subset", required=True, choices=["medical", "novel"], 
-                        help="Subset to process")
+    parser.add_argument(
+        "--subset",
+        required=True,
+        choices=supported_subsets,
+        help=f"Subset to process ({', '.join(supported_subsets)})",
+    )
     parser.add_argument("--config", default="./config.yml", 
                         help="Path to configuration YAML file")
     parser.add_argument("--output_dir", default="./results/GraphRAG", 
@@ -160,13 +155,11 @@ def main():
     args = parser.parse_args()
     
     # Get paths for this subset
-    if args.subset in DEFAULT_PATHS:
-        corpus_path = DEFAULT_PATHS[args.subset]["corpus_path"]
-        questions_path = DEFAULT_PATHS[args.subset]["questions_path"]
-    else:
-        corpus_path = f"./Datasets/Corpus/{args.subset}.parquet"
-        questions_path = f"./Datasets/Questions/{args.subset}_questions.parquet"
-        logger.warning(f"Using inferred paths for unknown subset: {args.subset}")
+    try:
+        corpus_path, questions_path = get_subset_paths(args.subset)
+    except ValueError as e:
+        logger.error(str(e))
+        return
     
     # Load corpus data
     try:

@@ -20,6 +20,7 @@ from common_benchmark import (
     load_question_records,
     save_results_json,
 )
+from subset_registry import get_subset_paths, get_supported_subsets
 
 # Add project root to path for local imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -237,23 +238,17 @@ def process_corpus(
     logging.info(f"💾 Saved {len(results)} predictions to: {output_path}")
 
 def main():
-    # Define subset paths
-    SUBSET_PATHS = {
-        "medical": {
-            "corpus": "./Datasets/Corpus/medical.parquet",
-            "questions": "./Datasets/Questions/medical_questions.parquet"
-        },
-        "novel": {
-            "corpus": "./Datasets/Corpus/novel.parquet",
-            "questions": "./Datasets/Questions/novel_questions.parquet"
-        }
-    }
-    
+    supported_subsets = get_supported_subsets("fast-graphrag")
+
     parser = argparse.ArgumentParser(description="GraphRAG: Process Corpora and Answer Questions")
     
     # Core arguments
-    parser.add_argument("--subset", required=True, choices=["medical", "novel"], 
-                        help="Subset to process (medical or novel)")
+    parser.add_argument(
+        "--subset",
+        required=True,
+        choices=supported_subsets,
+        help=f"Subset to process ({', '.join(supported_subsets)})",
+    )
     parser.add_argument("--base_dir", default="./fast-graphrag_workspace", 
                         help="Base working directory for GraphRAG")
     parser.add_argument("--output_dir", default="./results/fast-graphrag",
@@ -319,14 +314,12 @@ def main():
     
     logging.info(f"🚀 Starting GraphRAG processing for subset: {args.subset}")
     
-    # Validate subset
-    if args.subset not in SUBSET_PATHS:
-        logging.error(f"❌ Invalid subset: {args.subset}. Valid options: {list(SUBSET_PATHS.keys())}")
-        return
-    
     # Get file paths for this subset
-    corpus_path = SUBSET_PATHS[args.subset]["corpus"]
-    questions_path = SUBSET_PATHS[args.subset]["questions"]
+    try:
+        corpus_path, questions_path = get_subset_paths(args.subset)
+    except ValueError as e:
+        logging.error(f"❌ {e}")
+        return
     
     # Handle API keys
     llm_api_key = args.llm_api_key or os.getenv("LLM_API_KEY", "")

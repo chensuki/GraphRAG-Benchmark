@@ -20,3 +20,6 @@
 [2026-03-03 10:33:03] 修复 LightRAG zhipu.py 合并冲突标记导致的 SyntaxError，合并装饰器参数并通过 AST 语法校验。
 [2026-03-03 10:52:59] 增加统一路径防覆盖能力：run.run_id + paths 根目录 + {run_id}/{framework} 模板解析；run_from_yaml 自动下发 base_dir/output_dir；为 lightrag/fast-graphrag/hipporag2 新增 --output_dir。
 [2026-03-03 11:00:32] 调整为索引复用模式：各框架 base_dir 固定、默认 skip_build=true；新增 fast-graphrag/hipporag2 的 --skip-build 支持；run_from_yaml 统一下发 skip_build。
+[2026-03-03 17:20:37] 补充 LightRAG 对 medical_100 子集支持：run_from_yaml 扩展 lightrag 可用子集；run_lightrag 新增 medical_100 路径映射到 medical_questions_100_balanced.json，并更新 --subset 参数校验。
+[2026-03-03 17:24:18] 统一数据集子集配置：新增 Examples/subset_registry.py 作为唯一子集与路径注册表；run_from_yaml 及 run_lightrag/run_clearrag/run_fast-graphrag/run_hipporag2/run_digimon 全部改为从该注册表读取 subset 支持与数据路径。
+[2026-03-03 20:57:13] 调整为全框架统一子集支持：subset_registry 中 fast-graphrag/hipporag2/digimon 也改为支持 medical、medical_100、novel、hotpotqa。
