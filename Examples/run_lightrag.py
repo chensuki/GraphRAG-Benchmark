@@ -388,6 +388,7 @@ def main():
     parser.add_argument("--embed_provider", default="hf", choices=["hf", "zhipu", "openai"], help="Embedding provider")
     parser.add_argument("--retrieve_topk", type=int, default=5, help="Number of top documents to retrieve")
     parser.add_argument("--sample", type=int, default=None, help="Number of questions to sample per corpus")
+    parser.add_argument("--corpus_sample", type=int, default=None, help="Number of corpora to process")
     parser.add_argument("--skip-build", action="store_true", help="Skip indexing phase, only run queries (assumes corpus is already indexed)")
     
     # API configuration
@@ -434,11 +435,12 @@ def main():
     except Exception as e:
         logging.error(f"Failed to load corpus: {e}")
         return
-    
-    # Sample corpus data if requested
-    if args.sample:
-        corpus_data = corpus_data[:1]
 
+    total_corpora = len(corpus_data)
+    if args.corpus_sample and args.corpus_sample < len(corpus_data):
+        corpus_data = corpus_data[:args.corpus_sample]
+        logging.info(f"Sampled {args.corpus_sample} corpora from {total_corpora} total")
+    
     # Load question data
     try:
         question_data = load_question_records(questions_path)

@@ -150,7 +150,8 @@ def build_lightrag_cmd(
     )
     add_arg(cmd, "--base_dir", fw.get("base_dir"))
     add_arg(cmd, "--output_dir", fw.get("output_dir"))
-    add_arg(cmd, "--sample", fw.get("sample", common.get("sample")))
+    add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
+    add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
     add_arg(cmd, "--skip-build", fw.get("skip_build", False))
     return cmd
 
@@ -167,7 +168,7 @@ def build_clearrag_cmd(
         merge_value(common.get("subset", "medical"), fw.get("subset"), enforce_common),
     )
     add_arg(cmd, "--base_dir", fw.get("base_dir", "./clearrag_workspace"))
-    add_arg(cmd, "--sample", fw.get("sample", common.get("sample")))
+    add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
     add_arg(
         cmd,
         "--top_k",
@@ -180,6 +181,7 @@ def build_clearrag_cmd(
     add_arg(cmd, "--corpus-concurrency", fw.get("corpus_concurrency", 2))
     add_arg(cmd, "--output_dir", fw.get("output_dir", "./results/clearrag"))
     add_arg(cmd, "--skip-build", fw.get("skip_build", False))
+    add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
     return cmd
 
 
@@ -209,7 +211,8 @@ def build_fast_graphrag_cmd(
     add_arg(cmd, "--embed_base_url", fw.get("embed_base_url", embed.get("base_url")))
     add_arg(cmd, "--embed_api_key", fw.get("embed_api_key", embed.get("api_key")))
     add_arg(cmd, "--output_dir", fw.get("output_dir"))
-    add_arg(cmd, "--sample", fw.get("sample", common.get("sample")))
+    add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
+    add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
     add_arg(cmd, "--skip-build", fw.get("skip_build", False))
     return cmd
 
@@ -243,7 +246,8 @@ def build_hipporag2_cmd(
         "--top_k",
         merge_value(retrieval.get("top_k", 5), fw.get("top_k"), enforce_common),
     )
-    add_arg(cmd, "--sample", fw.get("sample", common.get("sample")))
+    add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
+    add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
     add_arg(cmd, "--skip-build", fw.get("skip_build", False))
     return cmd
 
@@ -269,7 +273,8 @@ def build_digimon_cmd(
     )
     add_arg(cmd, "--llm_base_url", fw.get("llm_base_url", llm.get("base_url")))
     add_arg(cmd, "--llm_api_key", fw.get("llm_api_key", llm.get("api_key")))
-    add_arg(cmd, "--sample", fw.get("sample", common.get("sample")))
+    add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
+    add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
     return cmd
 
 
@@ -400,3 +405,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -217,6 +217,8 @@ def main():
                         help="Path to embedding model directory")
     parser.add_argument("--sample", type=int, default=None, 
                         help="Number of questions to sample per corpus")
+    parser.add_argument("--corpus_sample", type=int, default=None,
+                        help="Number of corpora to process")
     parser.add_argument("--top_k", type=int, default=5,
                         help="Unified top-k for retrieval/linking/qa")
     parser.add_argument("--skip-build", action="store_true",
@@ -254,10 +256,11 @@ def main():
     except Exception as e:
         logging.error(f"❌ Failed to load corpus: {e}")
         return
-    
-    # Sample corpus data if requested
-    if args.sample:
-        corpus_data = corpus_data[:1]
+
+    total_corpora = len(corpus_data)
+    if args.corpus_sample and args.corpus_sample < len(corpus_data):
+        corpus_data = corpus_data[:args.corpus_sample]
+        logging.info(f"Sampled {args.corpus_sample} corpora from {total_corpora} total")
     
     # Load question data
     try:

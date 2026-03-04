@@ -277,6 +277,8 @@ def main():
     # Other options
     parser.add_argument("--sample", type=int, default=None, 
                         help="Number of questions to sample per corpus")
+    parser.add_argument("--corpus_sample", type=int, default=None,
+                        help="Number of corpora to process")
     parser.add_argument("--skip-build", action="store_true",
                         help="Skip indexing phase and reuse existing index")
 
@@ -340,19 +342,11 @@ def main():
     except Exception as e:
         logging.error(f"❌ Failed to load corpus: {e}")
         return
-    
-    # Sample corpus data if requested
-    if args.sample:
-        corpus_data = corpus_data[:1]
-        # Also limit context length to avoid memory issues
-        if corpus_data:
-            max_words = 5000  # Limit to first 5000 words
-            context = corpus_data[0]["context"]
-            words = context.split()
-            if len(words) > max_words:
-                limited_context = " ".join(words[:max_words])
-                corpus_data[0]["context"] = limited_context
-                logging.info(f"Limited context to {max_words} words for testing")
+
+    total_corpora = len(corpus_data)
+    if args.corpus_sample and args.corpus_sample < len(corpus_data):
+        corpus_data = corpus_data[:args.corpus_sample]
+        logging.info(f"Sampled {args.corpus_sample} corpora from {total_corpora} total")
     
     # Load question data
     try:

@@ -269,6 +269,12 @@ def main():
         default=None,
         help="每个语料库采样的问题数量（用于测试）"
     )
+    parser.add_argument(
+        "--corpus_sample",
+        type=int,
+        default=None,
+        help="采样处理的语料库数量（默认全部）"
+    )
 
     # 查询配置
     parser.add_argument(
@@ -359,10 +365,10 @@ def main():
         logger.error(f"❌ 加载语料库失败: {e}")
         return
 
-    # 采样语料库（如果指定）
-    if args.sample:
-        corpus_data = corpus_data[:1]
-        logger.info(f"🔍 采样了 1 个语料库（用于测试）")
+    total_corpora = len(corpus_data)
+    if args.corpus_sample and args.corpus_sample < len(corpus_data):
+        corpus_data = corpus_data[:args.corpus_sample]
+        logger.info(f"🔍 采样了 {args.corpus_sample} 个语料库（共 {total_corpora} 个）")
 
     # 加载问题数据
     try:

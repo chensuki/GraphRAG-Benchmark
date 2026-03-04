@@ -151,6 +151,8 @@ def main():
     # Sampling and debugging
     parser.add_argument("--sample", type=int, default=None, 
                         help="Number of questions to sample per corpus")
+    parser.add_argument("--corpus_sample", type=int, default=None,
+                        help="Number of corpora to process")
     
     args = parser.parse_args()
     
@@ -169,11 +171,11 @@ def main():
     except Exception as e:
         logger.error(f"❌ Failed to load corpus: {e}")
         return
-    
-    # Sample corpus data if requested
-    if args.sample:
-        corpus_data = dict(list(corpus_data.items())[:1])
-        logger.info(f"🔍 Sampled 1 corpus from {len(corpus_data)} total")
+
+    total_corpora = len(corpus_data)
+    if args.corpus_sample and args.corpus_sample < len(corpus_data):
+        corpus_data = dict(list(corpus_data.items())[:args.corpus_sample])
+        logger.info(f"🔍 Sampled {args.corpus_sample} corpora from {total_corpora} total")
     
     # Load question data
     try:
