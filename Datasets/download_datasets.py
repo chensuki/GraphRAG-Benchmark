@@ -93,15 +93,15 @@ DATASET_CONFIGS = {
         hf_path="TommyChien/UltraDomain",
         subset=None,
         split="train",
-        description="UltraDomain: 跨域问答数据集",
-        original_fields=["_id", "input", "answers", "context", "length", "context_id", "label", "meta"],
+        description="UltraDomain/LongBench: 长文本问答数据集",
+        original_fields=["_id", "input", "answers", "context", "length", "dataset", "label"],
         id_field="_id",
         question_field="input",
         answer_field="answers",
         context_field="context",
-        evidence_field="label",
+        evidence_field=None,  # 该数据集无显式证据字段
         has_nested_context=False,
-        question_type_field="label",
+        question_type_field="dataset",  # 使用 dataset 字段标识来源
     ),
     "2wikimultihop": DatasetConfig(
         name="2wikimultihop",
@@ -109,9 +109,14 @@ DATASET_CONFIGS = {
         subset=None,
         split="validation",
         description="2WikiMultihopQA: 两跳维基百科问答",
-        original_fields=["_id", "question", "answer", "supporting_facts", "context", "query_id", "graph_query", "question_id"],
+        original_fields=["id", "question", "answer", "type", "evidences", "supporting_facts", "context"],
+        id_field="id",
+        question_field="question",
+        answer_field="answer",
+        context_field="context",
+        evidence_field="supporting_facts",  # 使用 supporting_facts 提取证据句子
         has_nested_context=True,
-        question_type_field=None,
+        question_type_field="type",
     ),
     "musique": DatasetConfig(
         name="musique",
@@ -231,12 +236,33 @@ def load_dataset_from_local(local_path: Path, config: DatasetConfig) -> Optional
     
     # 1. 尝试加载 HuggingFace 缓存目录
     if local_path.is_dir():
-        # 查找 parquet 或 arrow 文件
-        parquet_files = list(local_path.rglob("*.parquet"))
-        arrow_files = list(local_path.rglob("*.arrow"))
+        # 查找指定 split 的 parquet 文件（优先）
+        split = config.split
+        split_patterns = [
+            f"**/{split}*.parquet",      # validation-00000-of-00001.parquet
+            f"**/{split}/*.parquet",      # validation/xxx.parquet
+            f"**/{split}*.arrow",
+            f"**/{split}/*.arrow",
+        ]
+        
+        split_files = []
+        for pattern in split_patterns:
+            found = list(local_path.glob(pattern))
+            if found:
+                split_files.extend(found)
+                break
+        
+        # 如果找到了指定 split 的文件，只加载这些
+        if split_files:
+            parquet_files = [f for f in split_files if f.suffix == '.parquet']
+            arrow_files = [f for f in split_files if f.suffix == '.arrow']
+        else:
+            # 否则加载所有文件
+            parquet_files = list(local_path.rglob("*.parquet"))
+            arrow_files = list(local_path.rglob("*.arrow"))
         
         if parquet_files:
-            print(f"   找到 {len(parquet_files)} 个 parquet 文件")
+            print(f"   找到 {len(parquet_files)} 个 parquet 文件 (split: {split})")
             try:
                 dataset = load_dataset("parquet", data_files=[str(f) for f in parquet_files], split="train")
                 print(f"   ✅ 加载成功: {len(dataset)} 条数据")
@@ -247,7 +273,6 @@ def load_dataset_from_local(local_path: Path, config: DatasetConfig) -> Optional
         if arrow_files:
             print(f"   找到 {len(arrow_files)} 个 arrow 文件")
             try:
-                # 尝试从 arrow 文件加载
                 dataset = Dataset.from_file(str(arrow_files[0]))
                 print(f"   ✅ 加载成功: {len(dataset)} 条数据")
                 return dataset
@@ -364,6 +389,8 @@ def extract_context_documents(item: Dict, config: DatasetConfig) -> Tuple[str, L
 
 def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -> str:
     """提取证据文本"""
+    if config.evidence_field is None:
+        return ""  # 无证据字段
     evidence_data = item.get(config.evidence_field, [])
     evidence_parts = []
     

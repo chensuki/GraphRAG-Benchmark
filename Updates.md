@@ -23,3 +23,5 @@
 [2026-03-03 17:20:37] 补充 LightRAG 对 medical_100 子集支持：run_from_yaml 扩展 lightrag 可用子集；run_lightrag 新增 medical_100 路径映射到 medical_questions_100_balanced.json，并更新 --subset 参数校验。
 [2026-03-03 17:24:18] 统一数据集子集配置：新增 Examples/subset_registry.py 作为唯一子集与路径注册表；run_from_yaml 及 run_lightrag/run_clearrag/run_fast-graphrag/run_hipporag2/run_digimon 全部改为从该注册表读取 subset 支持与数据路径。
 [2026-03-03 20:57:13] 调整为全框架统一子集支持：subset_registry 中 fast-graphrag/hipporag2/digimon 也改为支持 medical、medical_100、novel、hotpotqa。
+[2026-03-04 00:22:24] 修复 run_clearrag 参数兼容：--passage-retrieval-mode 新增 none 选项（与 clearrag/config.py 检索模式一致）。
+[2026-03-04 11:27:52] run_clearrag 适配器初始化显式指定 skill_registry_path=./clearrag/clearrag/skills，修复 skills 目录错位导致 load_skill 可用列表为空的问题。

@@ -88,7 +88,7 @@ async def process_corpus(
         top_k: 查询时返回的上下文数量
         skip_build: 是否跳过构建阶段
         activation_mode: 实体激活模式（"semantic_propagation" 或 "vector_search"）
-        passage_retrieval_mode: 段落检索模式（"pagerank" 或 "simple"）
+        passage_retrieval_mode: 段落检索模式（"pagerank"、"vector" 或 "none"）
         fast_mode: 快速模式（禁用Reflexion）
         max_concurrency: 最大并发度
     """
@@ -116,6 +116,7 @@ async def process_corpus(
             fast_mode=fast_mode,
             max_concurrency=max_concurrency,
             enable_checkpoint=True,  # 启用断点续传
+            skill_registry_path=str(clearrag_dir / "clearrag" / "skills"),
         )
         logger.info("✅ ClearRAG适配器初始化成功")
     except Exception as e:
@@ -291,8 +292,8 @@ def main():
         "--passage-retrieval-mode",
         type=str,
         default="pagerank",
-        choices=["pagerank", "simple"],
-        help="段落检索模式：pagerank（高精度）或 simple（快速）"
+        choices=["vector", "pagerank", "none"],
+        help="段落检索模式：vector（向量检索）/ pagerank（高精度）/ none（禁用）"
     )
 
     # 快速模式
