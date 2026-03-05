@@ -173,6 +173,7 @@ async def initialize_rag(
     # Create RAG instance
     rag = LightRAG(
         working_dir=working_dir,
+        workspace=source,
         llm_model_func=llm_model_func,
         llm_model_name=model_name,
         llm_model_max_async=4,
@@ -201,6 +202,7 @@ async def process_corpus(
     sample: int,
     retrieve_topk: int,
     skip_build: bool = False,
+    index_only: bool = False,
     output_dir_root: str = "./results/lightrag",
 ):
     """Process a single corpus: index it and answer its questions"""
@@ -225,6 +227,10 @@ async def process_corpus(
         logging.info(f"✅ Indexed corpus: {corpus_name} ({len(context.split())} words)")
     else:
         logging.info(f"⏭️  Skipping indexing (assuming corpus {corpus_name} is already indexed)")
+
+    if index_only:
+        logging.info(f"⏭️  Index-only mode enabled, skipping query for corpus: {corpus_name}")
+        return
     
     corpus_questions = questions.get(corpus_name, [])
     
@@ -389,6 +395,13 @@ def main():
     parser.add_argument("--retrieve_topk", type=int, default=5, help="Number of top documents to retrieve")
     parser.add_argument("--sample", type=int, default=None, help="Number of questions to sample per corpus")
     parser.add_argument("--corpus_sample", type=int, default=None, help="Number of corpora to process")
+    parser.add_argument(
+        "--corpus-concurrency",
+        type=int,
+        default=1,
+        help="Number of corpora to process concurrently (default: 1)",
+    )
+    parser.add_argument("--index-only", action="store_true", help="Only build index, skip querying")
     parser.add_argument("--skip-build", action="store_true", help="Skip indexing phase, only run queries (assumes corpus is already indexed)")
     
     # API configuration
@@ -450,12 +463,15 @@ def main():
         logging.error(f"Failed to load questions: {e}")
         return
     
-    # Process each corpus concurrently in a single event loop
+    # Process corpora with explicit concurrency control
     async def _run_all():
-        tasks = []
-        for item in corpus_data:
-            tasks.append(
-                process_corpus(
+        concurrency = max(1, args.corpus_concurrency)
+        logging.info(f"Corpus processing concurrency: {concurrency}")
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def process_with_limit(item: Dict):
+            async with semaphore:
+                await process_corpus(
                     corpus_name=item["corpus_name"],
                     context=item["context"],
                     base_dir=args.base_dir,
@@ -470,9 +486,11 @@ def main():
                     sample=args.sample,
                     retrieve_topk=args.retrieve_topk,
                     skip_build=args.skip_build,
+                    index_only=args.index_only,
                     output_dir_root=args.output_dir,
                 )
-            )
+
+        tasks = [process_with_limit(item) for item in corpus_data]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for r in results:
             if isinstance(r, Exception):

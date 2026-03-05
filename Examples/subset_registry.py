@@ -32,6 +32,7 @@ FRAMEWORK_SUPPORTED_SUBSETS: Dict[str, Tuple[str, ...]] = {
     "fast-graphrag": UNIFIED_SUBSETS,
     "hipporag2": UNIFIED_SUBSETS,
     "digimon": UNIFIED_SUBSETS,
+    "linearrag": UNIFIED_SUBSETS,
 }
 
 

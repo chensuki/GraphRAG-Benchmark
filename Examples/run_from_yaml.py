@@ -152,6 +152,16 @@ def build_lightrag_cmd(
     add_arg(cmd, "--output_dir", fw.get("output_dir"))
     add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
     add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
+    add_arg(
+        cmd,
+        "--corpus-concurrency",
+        merge_value(common.get("corpus_concurrency"), fw.get("corpus_concurrency"), enforce_common),
+    )
+    add_arg(
+        cmd,
+        "--index-only",
+        merge_value(common.get("index_only"), fw.get("index_only"), enforce_common),
+    )
     add_arg(cmd, "--skip-build", fw.get("skip_build", False))
     return cmd
 
@@ -278,6 +288,50 @@ def build_digimon_cmd(
     return cmd
 
 
+def build_linearrag_cmd(
+    common: Dict[str, Any], fw: Dict[str, Any], enforce_common: bool
+) -> List[str]:
+    """构建 LinearRAG 命令"""
+    llm = common.get("llm", {})
+    embed = common.get("embed", {})
+    retrieval = common.get("retrieval", {})
+    cmd = [sys.executable, "Examples/run_linearrag.py"]
+
+    add_arg(
+        cmd,
+        "--subset",
+        merge_value(common.get("subset", "medical"), fw.get("subset"), enforce_common),
+    )
+    add_arg(cmd, "--base_dir", fw.get("base_dir", "./linearrag_workspace"))
+    add_arg(
+        cmd,
+        "--model_name",
+        merge_value(llm.get("model"), fw.get("model_name"), enforce_common),
+    )
+    add_arg(cmd, "--llm_base_url", fw.get("llm_base_url", llm.get("base_url")))
+    add_arg(cmd, "--llm_api_key", fw.get("llm_api_key", llm.get("api_key")))
+    add_arg(cmd, "--embed_provider", fw.get("embed_provider", embed.get("provider", "zhipu")))
+    add_arg(cmd, "--embed_model", fw.get("embed_model", embed.get("name")))
+    add_arg(cmd, "--embed_api_key", fw.get("embed_api_key", embed.get("api_key")))
+    add_arg(cmd, "--embed_base_url", fw.get("embed_base_url", embed.get("base_url")))
+    add_arg(
+        cmd,
+        "--top_k",
+        merge_value(retrieval.get("top_k", 5), fw.get("top_k"), enforce_common),
+    )
+    add_arg(cmd, "--max_iterations", fw.get("max_iterations", 3))
+    add_arg(cmd, "--iteration_threshold", fw.get("iteration_threshold", 0.4))
+    add_arg(cmd, "--top_k_sentence", fw.get("top_k_sentence", 3))
+    add_arg(cmd, "--use_vectorized", fw.get("use_vectorized", False))
+    add_arg(cmd, "--spacy_model", fw.get("spacy_model", "en_core_web_trf"))
+    add_arg(cmd, "--max_workers", fw.get("max_workers", 8))
+    add_arg(cmd, "--output_dir", fw.get("output_dir"))
+    add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
+    add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))
+    add_arg(cmd, "--skip-build", fw.get("skip_build", False))
+    return cmd
+
+
 def build_command(framework: str, config: Dict[str, Any]) -> List[str]:
     common = config.get("common", {})
     fw_cfg = get_nested(config, ["frameworks", framework], {})
@@ -300,6 +354,7 @@ def build_command(framework: str, config: Dict[str, Any]) -> List[str]:
         "fast-graphrag": build_fast_graphrag_cmd,
         "hipporag2": build_hipporag2_cmd,
         "digimon": build_digimon_cmd,
+        "linearrag": build_linearrag_cmd,
     }
     if framework not in builders:
         raise ValueError(f"Unsupported framework: {framework}")
@@ -323,7 +378,7 @@ def build_consistency_view(framework: str, config: Dict[str, Any]) -> Dict[str, 
 
     if framework == "lightrag":
         view["top_k"] = merge_value(retrieval.get("top_k", 5), fw.get("retrieve_topk"), enforce_common)
-    elif framework in {"clearrag", "hipporag2"}:
+    elif framework in {"clearrag", "hipporag2", "linearrag"}:
         view["top_k"] = merge_value(retrieval.get("top_k", 5), fw.get("top_k"), enforce_common)
     return view
 

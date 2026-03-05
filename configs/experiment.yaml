@@ -10,8 +10,9 @@ paths:
   evaluation_root: ./results/evaluations
 
 common:
-  subset: medical_100
-  sample: 
+  subset: novel # "medical", "medical_100", "novel", "hotpotqa"
+  sample: 1
+  corpus_sample: # 仅控制语料库数量；留空表示处理全部语料库
   seed: 42
 
   llm:
@@ -44,7 +45,9 @@ frameworks:
     output_dir: ./results/lightrag/{run_id}
     embed_provider: zhipu
     embed_model: embedding-3
-    skip_build: true
+    corpus_concurrency: 1
+    index_only: false
+    skip_build: false
 
   clearrag:
     enabled: true
@@ -85,3 +88,19 @@ frameworks:
     mode: config
     config: ./config.yml
     output_dir: ./results/GraphRAG/{run_id}
+
+  linearrag:
+    enabled: false
+    subset: medical
+    base_dir: ./linearrag_workspace
+    output_dir: ./results/linearrag/{run_id}
+    embed_provider: zhipu
+    embed_model: embedding-3
+    top_k: 5
+    max_iterations: 3
+    iteration_threshold: 0.4
+    top_k_sentence: 3
+    use_vectorized: false
+    spacy_model: en_core_web_trf
+    max_workers: 8
+    skip_build: false

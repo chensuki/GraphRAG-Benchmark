@@ -25,3 +25,7 @@
 [2026-03-03 20:57:13] 调整为全框架统一子集支持：subset_registry 中 fast-graphrag/hipporag2/digimon 也改为支持 medical、medical_100、novel、hotpotqa。
 [2026-03-04 00:22:24] 修复 run_clearrag 参数兼容：--passage-retrieval-mode 新增 none 选项（与 clearrag/config.py 检索模式一致）。
 [2026-03-04 11:27:52] run_clearrag 适配器初始化显式指定 skill_registry_path=./clearrag/clearrag/skills，修复 skills 目录错位导致 load_skill 可用列表为空的问题。
+[2026-03-04 16:53:17] 调整 sample 语义：移除 run_lightrag/run_clearrag/run_fast-graphrag/run_hipporag2/run_digimon 中按 args.sample 截断语料库数量的逻辑，sample 仅用于每个语料的问题采样。
+[2026-03-04 16:59:13] 重设计采样参数：新增 corpus_sample（控制语料库数量），并将 sample 语义固定为仅控制每个语料库的问题数量；run_from_yaml 与 run_lightrag/run_clearrag/run_fast-graphrag/run_hipporag2/run_digimon 已统一透传与解析。
+[2026-03-04 17:12:10] run_from_yaml 参数一致性增强：sample 与 corpus_sample 也按 enforce_common 合并规则解析（common 优先 / 可切换），避免框架局部配置破坏统一实验参数。
+[2026-03-04 21:23:26] LightRAG 运行流程增强：新增 --corpus-concurrency（默认1）与 --index-only；run_from_yaml 已透传对应配置。run_lightrag 初始化显式设置 workspace=corpus_name，降低多语料并发下 pipeline 互相排队导致的提前查询问题。
