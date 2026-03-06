@@ -1,12 +1,29 @@
-datasets==3.3.2
+# Benchmark 主依赖 (2026-03 更新 - 兼容所有框架)
+
+# 数据集处理 - 与 LightRAG evaluation 兼容
+datasets>=4.3.0
+
+# 评估框架
 Evaluation==0.0.2
-langchain==0.3.26
-langchain_core==0.3.69
-langchain_openai==0.3.28
-langchain_ollama
-numpy
-pydantic==2.11.7
-ragas==0.2.15
-rouge_score==0.1.2
+
+# LangChain 系列
+langchain>=0.3.26
+langchain-core>=0.3.69
+langchain-openai>=0.3.28
+langchain-ollama
+
+# 数值计算
+numpy>=1.24.0,<3.0.0
+
+# 数据验证
+pydantic>=2.11.0
+
+# RAG 评估 - 与 LightRAG evaluation 兼容
+ragas>=0.3.7
+
+# 文本评估
+rouge_score>=0.1.2
+
+# JSON 处理
 json5
 json_repair

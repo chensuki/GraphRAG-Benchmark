@@ -40,6 +40,7 @@ env/
 *.pyc
 __pycache__/*.pyc.*
 __pycache__
+*.egg-info/
 
 # 监控和日志
 logs/
