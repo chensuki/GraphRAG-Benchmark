@@ -31,3 +31,4 @@
 [2026-03-04 21:23:26] LightRAG 运行流程增强：新增 --corpus-concurrency（默认1）与 --index-only；run_from_yaml 已透传对应配置。run_lightrag 初始化显式设置 workspace=corpus_name，降低多语料并发下 pipeline 互相排队导致的提前查询问题。
 [2026-03-05 22:12:08] 更新运行.md：新增 LinearRAG 框架状态、运行命令（完整/仅索引/仅查询/YAML 调度）与参数说明，补充 sample 与 corpus_sample 语义及 skip-build 索引依赖说明。
 [2026-03-05 22:16:54] 更新运行.md：在 LinearRAG 章节新增依赖安装说明（linearrag requirements + SpaCy en_core_web_trf 模型）。
+[2026-03-06 11:06:00] 修复 LinearRAG 结果 context 重复：在 Examples/run_linearrag.py 的 benchmark 输出阶段新增 normalize_context_list，去除 passage 编号前缀后按正文保序去重，不修改 LinearRAG 核心检索逻辑。

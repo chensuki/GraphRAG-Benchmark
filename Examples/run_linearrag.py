@@ -36,6 +36,23 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def normalize_context_list(raw_context: List[str]) -> List[str]:
+    """移除 LinearRAG 的 passage 编号前缀，并在输出前保序去重。"""
+    normalized_context = []
+    seen = set()
+
+    for ctx in raw_context:
+        cleaned = ctx
+        if ":" in ctx and ctx.split(":")[0].isdigit():
+            cleaned = ":".join(ctx.split(":")[1:]).strip()
+
+        if cleaned not in seen:
+            seen.add(cleaned)
+            normalized_context.append(cleaned)
+
+    return normalized_context
+
+
 class LinearRAGBenchmarkAdapter:
     """LinearRAG 适配器，统一接口到 Benchmark 格式"""
     
@@ -138,15 +155,8 @@ class LinearRAGBenchmarkAdapter:
         # 转换为标准格式
         benchmark_results = []
         for result, orig_q in zip(results, questions):
-            # 提取上下文（去除索引前缀）
             context = ensure_context_list(result.get("sorted_passage", []))
-            # 清理上下文中的索引前缀 "0:xxx" -> "xxx"
-            cleaned_context = []
-            for ctx in context:
-                if ":" in ctx and ctx.split(":")[0].isdigit():
-                    cleaned_context.append(":".join(ctx.split(":")[1:]).strip())
-                else:
-                    cleaned_context.append(ctx)
+            cleaned_context = normalize_context_list(context)
             
             benchmark_results.append({
                 "id": orig_q.get("id", ""),
