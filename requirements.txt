@@ -27,3 +27,4 @@ rouge_score>=0.1.2
 # JSON 处理
 json5
 json_repair
+ijson>=3.2.0
