@@ -29,3 +29,5 @@
 [2026-03-04 16:59:13] 重设计采样参数：新增 corpus_sample（控制语料库数量），并将 sample 语义固定为仅控制每个语料库的问题数量；run_from_yaml 与 run_lightrag/run_clearrag/run_fast-graphrag/run_hipporag2/run_digimon 已统一透传与解析。
 [2026-03-04 17:12:10] run_from_yaml 参数一致性增强：sample 与 corpus_sample 也按 enforce_common 合并规则解析（common 优先 / 可切换），避免框架局部配置破坏统一实验参数。
 [2026-03-04 21:23:26] LightRAG 运行流程增强：新增 --corpus-concurrency（默认1）与 --index-only；run_from_yaml 已透传对应配置。run_lightrag 初始化显式设置 workspace=corpus_name，降低多语料并发下 pipeline 互相排队导致的提前查询问题。
+[2026-03-05 22:12:08] 更新运行.md：新增 LinearRAG 框架状态、运行命令（完整/仅索引/仅查询/YAML 调度）与参数说明，补充 sample 与 corpus_sample 语义及 skip-build 索引依赖说明。
+[2026-03-05 22:16:54] 更新运行.md：在 LinearRAG 章节新增依赖安装说明（linearrag requirements + SpaCy en_core_web_trf 模型）。

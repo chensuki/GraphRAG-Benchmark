@@ -325,6 +325,16 @@ def build_linearrag_cmd(
     add_arg(cmd, "--use_vectorized", fw.get("use_vectorized", False))
     add_arg(cmd, "--spacy_model", fw.get("spacy_model", "en_core_web_trf"))
     add_arg(cmd, "--max_workers", fw.get("max_workers", 8))
+    add_arg(
+        cmd,
+        "--corpus-concurrency",
+        merge_value(common.get("corpus_concurrency"), fw.get("corpus_concurrency"), enforce_common),
+    )
+    add_arg(
+        cmd,
+        "--index-only",
+        merge_value(common.get("index_only"), fw.get("index_only"), enforce_common),
+    )
     add_arg(cmd, "--output_dir", fw.get("output_dir"))
     add_arg(cmd, "--sample", merge_value(common.get("sample"), fw.get("sample"), enforce_common))
     add_arg(cmd, "--corpus_sample", merge_value(common.get("corpus_sample"), fw.get("corpus_sample"), enforce_common))

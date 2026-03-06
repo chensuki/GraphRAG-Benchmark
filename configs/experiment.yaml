@@ -103,4 +103,6 @@ frameworks:
     use_vectorized: false
     spacy_model: en_core_web_trf
     max_workers: 8
+    corpus_concurrency: 1
+    index_only: false
     skip_build: false

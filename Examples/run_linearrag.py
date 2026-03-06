@@ -28,10 +28,6 @@ from common_benchmark import (
 )
 from subset_registry import get_subset_paths, get_supported_subsets
 
-# LinearRAG imports
-from src.config import LinearRAGConfig
-from src.LinearRAG import LinearRAG
-
 # 配置日志
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -68,9 +64,13 @@ class LinearRAGBenchmarkAdapter:
         os.environ["OPENAI_API_KEY"] = llm_api_key
         os.environ["OPENAI_BASE_URL"] = llm_base_url
         
+        from src.config import LinearRAGConfig
+        from src.LinearRAG import LinearRAG
+
         # 创建 LLM 模型包装
         from src.utils import LLM_Model
         self.llm_model = LLM_Model(llm_model)
+        self.linear_rag_cls = LinearRAG
         
         # 初始化配置
         self.config = LinearRAGConfig(
@@ -89,14 +89,21 @@ class LinearRAGBenchmarkAdapter:
             damping=damping,
         )
         
-        self.rag: Optional[LinearRAG] = None
+        self.rag: Optional[object] = None
         
     def build_index(self, corpus_name: str, passages: List[str]) -> None:
         """构建索引"""
         self.config.dataset_name = corpus_name
-        self.rag = LinearRAG(global_config=self.config)
+        self.rag = self.linear_rag_cls(global_config=self.config)
         self.rag.index(passages)
         logger.info(f"✅ 索引构建完成: {corpus_name}")
+
+    def load_index(self, corpus_name: str) -> None:
+        """加载已有索引"""
+        self.config.dataset_name = corpus_name
+        self.rag = self.linear_rag_cls(global_config=self.config)
+        self.rag.load_index()
+        logger.info(f"✅ 索引加载完成: {corpus_name}")
     
     def query(
         self,
@@ -214,6 +221,7 @@ def process_corpus(
     embed_base_url: Optional[str],
     top_k: int,
     skip_build: bool = False,
+    index_only: bool = False,
     max_iterations: int = 3,
     iteration_threshold: float = 0.4,
     top_k_sentence: int = 3,
@@ -226,6 +234,16 @@ def process_corpus(
     
     # 准备输出路径
     output_path = build_output_path(output_dir, f"predictions_{corpus_name}.json")
+
+    # 获取问题
+    corpus_questions = questions.get(corpus_name, [])
+    if not corpus_questions:
+        logger.warning(f"⚠️ 未找到语料库 {corpus_name} 的问题")
+        return
+    
+    # 采样
+    if sample and sample < len(corpus_questions):
+        corpus_questions = corpus_questions[:sample]
     
     # 准备 passages（按句子或段落分割）
     # LinearRAG 期望格式为 ["0:段落1", "1:段落2", ...]
@@ -237,50 +255,56 @@ def process_corpus(
     else:
         passages = [f"0:{context}"]
     
-    # 创建嵌入模型
-    embedding_model = create_embedding_model(
-        provider=embed_provider,
-        model_name=embed_model_name,
-        api_key=embed_api_key,
-        base_url=embed_base_url,
-    )
-    
-    # 初始化适配器
-    adapter = LinearRAGBenchmarkAdapter(
-        working_dir=os.path.join(base_dir, corpus_name),
-        llm_model=llm_model,
-        llm_base_url=llm_base_url,
-        llm_api_key=llm_api_key,
-        embedding_model=embedding_model,
-        retrieval_top_k=top_k,
-        max_iterations=max_iterations,
-        iteration_threshold=iteration_threshold,
-        top_k_sentence=top_k_sentence,
-        use_vectorized=use_vectorized,
-        max_workers=max_workers,
-        spacy_model=spacy_model,
-    )
-    
-    # 构建索引
-    if not skip_build:
-        adapter.build_index(corpus_name, passages)
-    else:
-        logger.info(f"⏭️ 跳过索引构建")
-        # 需要重新加载已有索引
-        adapter.config.dataset_name = corpus_name
-        adapter.rag = LinearRAG(global_config=adapter.config)
-    
-    # 获取问题
-    corpus_questions = questions.get(corpus_name, [])
-    if not corpus_questions:
-        logger.warning(f"⚠️ 未找到语料库 {corpus_name} 的问题")
+    try:
+        # 创建嵌入模型
+        embedding_model = create_embedding_model(
+            provider=embed_provider,
+            model_name=embed_model_name,
+            api_key=embed_api_key,
+            base_url=embed_base_url,
+        )
+        
+        # 初始化适配器
+        adapter = LinearRAGBenchmarkAdapter(
+            working_dir=os.path.join(base_dir, corpus_name),
+            llm_model=llm_model,
+            llm_base_url=llm_base_url,
+            llm_api_key=llm_api_key,
+            embedding_model=embedding_model,
+            retrieval_top_k=top_k,
+            max_iterations=max_iterations,
+            iteration_threshold=iteration_threshold,
+            top_k_sentence=top_k_sentence,
+            use_vectorized=use_vectorized,
+            max_workers=max_workers,
+            spacy_model=spacy_model,
+        )
+    except Exception as e:
+        logger.error(f"❌ 初始化失败: {e}")
+        error_results = [build_error_result(q, corpus_name, e, message_prefix="Init failed") for q in corpus_questions]
+        save_results_json(output_path, error_results)
+        logger.info(f"💾 已保存 {len(error_results)} 个失败结果到: {output_path}")
         return
     
-    # 采样
-    if sample and sample < len(corpus_questions):
-        corpus_questions = corpus_questions[:sample]
+    # 构建/加载索引
+    try:
+        if not skip_build:
+            adapter.build_index(corpus_name, passages)
+        else:
+            logger.info(f"⏭️ 跳过索引构建")
+            adapter.load_index(corpus_name)
+    except Exception as e:
+        logger.error(f"❌ 索引阶段失败: {e}")
+        error_results = [build_error_result(q, corpus_name, e, message_prefix="Index failed") for q in corpus_questions]
+        save_results_json(output_path, error_results)
+        logger.info(f"💾 已保存 {len(error_results)} 个失败结果到: {output_path}")
+        return
     
     logger.info(f"🔍 找到 {len(corpus_questions)} 个问题")
+
+    if index_only:
+        logger.info(f"⏭️ 仅构建索引模式，跳过查询: {corpus_name}")
+        return
     
     # 批量查询
     try:
@@ -291,6 +315,9 @@ def process_corpus(
         logger.error(f"❌ 查询失败: {e}")
         import traceback
         logger.debug(traceback.format_exc())
+        error_results = [build_error_result(q, corpus_name, e) for q in corpus_questions]
+        save_results_json(output_path, error_results)
+        logger.info(f"💾 已保存 {len(error_results)} 个失败结果到: {output_path}")
 
 
 def main():
@@ -416,9 +443,20 @@ def main():
         help="采样语料库数量"
     )
     parser.add_argument(
+        "--corpus-concurrency",
+        type=int,
+        default=1,
+        help="语料库并发处理数（默认 1，推荐 1 保证稳定）"
+    )
+    parser.add_argument(
         "--skip-build",
         action="store_true",
         help="跳过索引构建"
+    )
+    parser.add_argument(
+        "--index-only",
+        action="store_true",
+        help="仅构建/加载索引，跳过查询"
     )
     
     args = parser.parse_args()
@@ -453,31 +491,46 @@ def main():
     grouped_questions = group_questions_by_source(question_data)
     logger.info(f"❓ 已加载 {len(question_data)} 个问题")
     
-    # 处理每个语料库
-    for item in corpus_data:
-        process_corpus(
-            corpus_name=item["corpus_name"],
-            context=item["context"],
-            base_dir=args.base_dir,
-            questions=grouped_questions,
-            sample=args.sample,
-            output_dir=args.output_dir,
-            llm_model=args.model_name,
-            llm_base_url=args.llm_base_url,
-            llm_api_key=llm_api_key,
-            embed_provider=args.embed_provider,
-            embed_model_name=args.embed_model,
-            embed_api_key=embed_api_key,
-            embed_base_url=args.embed_base_url,
-            top_k=args.top_k,
-            skip_build=args.skip_build,
-            max_iterations=args.max_iterations,
-            iteration_threshold=args.iteration_threshold,
-            top_k_sentence=args.top_k_sentence,
-            use_vectorized=args.use_vectorized,
-            max_workers=args.max_workers,
-            spacy_model=args.spacy_model,
-        )
+    async def run_all() -> None:
+        concurrency = max(1, args.corpus_concurrency)
+        logger.info(f"📦 语料库并发数: {concurrency}")
+        semaphore = asyncio.Semaphore(concurrency)
+
+        async def process_with_limit(item: dict):
+            async with semaphore:
+                await asyncio.to_thread(
+                    process_corpus,
+                    corpus_name=item["corpus_name"],
+                    context=item["context"],
+                    base_dir=args.base_dir,
+                    questions=grouped_questions,
+                    sample=args.sample,
+                    output_dir=args.output_dir,
+                    llm_model=args.model_name,
+                    llm_base_url=args.llm_base_url,
+                    llm_api_key=llm_api_key,
+                    embed_provider=args.embed_provider,
+                    embed_model_name=args.embed_model,
+                    embed_api_key=embed_api_key,
+                    embed_base_url=args.embed_base_url,
+                    top_k=args.top_k,
+                    skip_build=args.skip_build,
+                    index_only=args.index_only,
+                    max_iterations=args.max_iterations,
+                    iteration_threshold=args.iteration_threshold,
+                    top_k_sentence=args.top_k_sentence,
+                    use_vectorized=args.use_vectorized,
+                    max_workers=args.max_workers,
+                    spacy_model=args.spacy_model,
+                )
+
+        tasks = [process_with_limit(item) for item in corpus_data]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                logger.error(f"❌ 语料库处理异常: {result}")
+
+    asyncio.run(run_all())
 
 
 if __name__ == "__main__":
