@@ -8,7 +8,7 @@ Evaluate the quality of generated answers from GraphRAG frameworks using multipl
 
 **Metrics per Question Type:**
 - **Fact Retrieval**: ROUGE-L score, Answer Correctness
-- **Complex Reasoning**: ROUGE-L score, Answer Correctness  
+- **Complex Reasoning**: ROUGE-L score, Answer Correctness
 - **Contextual Summarize**: Answer Correctness, Coverage Score
 - **Creative Generation**: Answer Correctness, Coverage Score, Faithfulness
 
@@ -64,3 +64,29 @@ python -m Evaluation.indexing_eval \
 - `fast_graphrag`: Fast-GraphRAG (uses graph_igraph_data.pklz)
 - `hipporag2`: HippoRAG2 (uses graph.pickle)
 - `graphml`: Generic GraphML format graph files
+
+#### d. Visualization
+
+Generate publication-quality figures from evaluation results.
+
+**Usage:**
+```bash
+# Single file
+python -m Evaluation.plot_results --input results/evaluations/clearrag/clear100_001.json
+
+# Multi-framework comparison
+python -m Evaluation.plot_results \
+    --input clear.json light.json \
+    --output figures/ \
+    --type all \
+    --prefix comparison
+```
+
+**Plot types:**
+- `bar`: Grouped bar chart
+- `radar`: Radar chart
+- `heatmap`: Heatmap
+- `line`: Line comparison chart
+- `all`: Generate all chart types
+
+See `Evaluation/可视化指南.md` for detailed usage.
