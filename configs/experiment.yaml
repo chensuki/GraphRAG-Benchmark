@@ -10,8 +10,8 @@ paths:
   evaluation_root: ./results/evaluations
 
 common:
-  subset: medical # "medical", "medical_100", "novel", "hotpotqa"
-  sample: 1
+  subset: 2wikimultihop # medical, medical_100, novel, hotpotqa_distractor, hotpotqa_fullwiki, 2wikimultihop, musique
+  sample: 3
   corpus_sample: # 仅控制语料库数量；留空表示处理全部语料库
   seed: 42
 
