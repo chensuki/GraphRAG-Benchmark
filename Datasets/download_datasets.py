@@ -8,9 +8,7 @@
 - bdsaglam/musique
 
 特点：
-- 保留原始数据集的所有字段
 - 输出评估格式（兼容 retrieval_eval.py 和 generation_eval.py）
-- 输出原始格式（用于扩展）
 - 同时生成 parquet 和 json 格式
 - 默认从本地目录加载（跳过网络下载）
 
@@ -18,8 +16,8 @@
     GraphRAG-Benchmark/
     ├── Datasets/
     │   ├── raw/                  # 原始数据集（手动下载）
-    │   │   ├── hotpotqa/
-    │   │   ├── ultradomain/
+    │   │   ├── hotpot_qa/
+    │   │   ├── musique/
     │   │   └── ...
     │   ├── Corpus/               # 解析后语料库
     │   └── Questions/            # 解析后问题集
@@ -51,102 +49,57 @@ HF_MIRRORS = [
 ]
 
 
-# ========== 标准问题类型 ==========
-STANDARD_QUESTION_TYPES = {
-    "Fact Retrieval": ["fact", "simple", "direct", "retrieval"],
-    "Complex Reasoning": ["bridge", "comparison", "compositional", "multi-hop", "reasoning", "hop"],
-    "Contextual Summarize": ["summarize", "summary", "context"],
-    "Creative Generation": ["creative", "generate", "synthesis"],
-}
-
-
-def map_question_type(
-    original_type: str,
-    mapping: Dict[str, str],
-    default: str = "Complex Reasoning"
-) -> str:
-    """
-    将原始问题类型映射为评估需要的标准类型
-
-    Args:
-        original_type: 原始类型字符串
-        mapping: 用户自定义映射规则
-        default: 默认类型
-
-    Returns:
-        标准问题类型: Fact Retrieval / Complex Reasoning / Contextual Summarize / Creative Generation
-    """
-    # 1. 优先使用用户自定义映射
-    if original_type.lower() in mapping:
-        return mapping[original_type.lower()]
-
-    # 2. 自动模糊匹配
-    original_lower = original_type.lower()
-    for std_type, keywords in STANDARD_QUESTION_TYPES.items():
-        if any(kw in original_lower for kw in keywords):
-            return std_type
-
-    # 3. 返回默认值
-    return default
-
-
 @dataclass
 class DatasetConfig:
-    """数据集配置（扩展版 - 支持评估格式）"""
+    """数据集配置"""
     name: str                    # 数据集名称
     hf_path: str                 # HuggingFace 数据集路径
     subset: Optional[str]        # 子集名称
     split: str                   # 数据集分割
     description: str             # 描述
 
-    # ========== 原始字段映射（保留原始数据） ==========
-    original_fields: List[str] = field(default_factory=list)
-    preserve_all_original_fields: bool = False  # 完整保存原始字段
-
-    # ========== 标准字段映射（用于框架评估） ==========
+    # 标准字段映射
     id_field: str = "id"
     question_field: str = "question"
     answer_field: str = "answer"
     context_field: str = "context"
     evidence_field: str = "supporting_facts"
-    evidences_field: Optional[str] = None       # 评估用的 evidences 字段
-    ground_truth_field: Optional[str] = None    # 评估用的 ground_truth 字段
 
-    # ========== 问题类型处理 ==========
-    question_type_field: Optional[str] = "type"  # 原始类型字段
+    # 问题类型（统一为 Complex Reasoning）
     question_type_default: str = "Complex Reasoning"
-    question_type_mapping: Dict[str, str] = field(default_factory=dict)  # 类型映射规则
 
-    # ========== 上下文处理 ==========
+    # 上下文处理
     has_nested_context: bool = False
-    generate_contexts_from_original: bool = False  # 是否从原始数据生成评估用的 contexts
-    contexts_generator: Optional[str] = None       # 上下文生成器类型: documents/sentences/paragraphs/evidence_only
-    per_question_corpus: bool = False  # 每个问题对应独立语料
+    per_question_corpus: bool = False
 
-    # ========== 其他 ==========
-    extra_standard_fields: List[str] = field(default_factory=list)  # 标准问题中额外保留的字段
+    # 额外保留字段（评估格式中使用）
+    extra_standard_fields: List[str] = field(default_factory=list)
+
+    # 原始字段保存（原始格式已禁用，保留配置以备扩展）
+    preserve_all_original_fields: bool = False
 
 
-# 支持的数据集配置（扩展版 - 支持评估格式）
+# 支持的数据集配置
 DATASET_CONFIGS = {
-    "hotpotqa": DatasetConfig(
-        name="hotpotqa",
+    "hotpotqa_distractor": DatasetConfig(
+        name="hotpotqa_distractor",
+        hf_path="hotpotqa/hotpot_qa",
+        subset="distractor",
+        split="validation",
+        description="HotpotQA Distractor: 预填充干扰文档版本",
+        has_nested_context=True,
+        evidence_field="supporting_facts",
+        extra_standard_fields=["type", "level", "supporting_facts"],
+    ),
+    "hotpotqa_fullwiki": DatasetConfig(
+        name="hotpotqa_fullwiki",
         hf_path="hotpotqa/hotpot_qa",
         subset="fullwiki",
         split="validation",
-        description="HotpotQA: 多跳问答数据集",
-        original_fields=["id", "question", "answer", "type", "level", "supporting_facts", "context"],
+        description="HotpotQA Fullwiki: 完整 Wikipedia 检索版本",
         has_nested_context=True,
-        question_type_field="type",
-        ground_truth_field="answer",
-        generate_contexts_from_original=True,
-        contexts_generator="documents",
-        question_type_mapping={
-            "bridge": "Complex Reasoning",
-            "comparison": "Complex Reasoning",
-            "bridge/comparison": "Complex Reasoning",
-            "multi-hop": "Complex Reasoning",
-        },
+        evidence_field="supporting_facts",
+        extra_standard_fields=["type", "level", "supporting_facts"],
     ),
     "ultradomain": DatasetConfig(
         name="ultradomain",
@@ -154,20 +107,13 @@ DATASET_CONFIGS = {
         subset=None,
         split="train",
         description="UltraDomain/LongBench: 长文本问答数据集",
-        original_fields=["_id", "input", "answers", "context", "length", "dataset", "label"],
         id_field="_id",
         question_field="input",
         answer_field="answers",
         context_field="context",
         evidence_field=None,
-        ground_truth_field="answers",
         has_nested_context=False,
-        question_type_field="dataset",
-        question_type_mapping={
-            "narrativeqa": "Complex Reasoning",
-            "qasper": "Fact Retrieval",
-            "quality": "Contextual Summarize",
-        },
+        preserve_all_original_fields=True,
     ),
     "2wikimultihop": DatasetConfig(
         name="2wikimultihop",
@@ -175,48 +121,28 @@ DATASET_CONFIGS = {
         subset=None,
         split="validation",
         description="2WikiMultihopQA: 两跳维基百科问答",
-        original_fields=["id", "question", "answer", "type", "level", "evidences", "supporting_facts", "context"],
-        id_field="id",
-        question_field="question",
-        answer_field="answer",
-        context_field="context",
-        evidence_field="supporting_facts",
-        ground_truth_field=None,  # answer 字段本身就是 ground_truth
         has_nested_context=True,
-        question_type_field="type",
-        question_type_default="Complex Reasoning",
+        evidence_field="supporting_facts",
         preserve_all_original_fields=True,
-        per_question_corpus=False,
-        generate_contexts_from_original=False,   # 生成评估用的 contexts
-        contexts_generator=None,         # 文档级上下文
         extra_standard_fields=["type", "level", "evidences", "supporting_facts"],
-        question_type_mapping={
-            "bridge_comparison": "Complex Reasoning",
-            "comparison": "Complex Reasoning",
-            "compositional": "Complex Reasoning",
-            "bridge": "Complex Reasoning",
-        },
     ),
     "musique": DatasetConfig(
         name="musique",
         hf_path="bdsaglam/musique",
-        subset=None,
+        subset="answerable",
         split="validation",
-        description="MuSiQue: 多跳问答数据集",
-        original_fields=["id", "question", "answer", "question_decomposition", "paragraphs", "answerable"],
-        id_field="id",
-        question_field="question",
-        answer_field="answer",
+        description="MuSiQue: 多跳问答数据集（仅包含可回答样本）",
         context_field="paragraphs",
         evidence_field="question_decomposition",
-        ground_truth_field="answer",
         has_nested_context=False,
-        question_type_field="answerable",
-        question_type_mapping={
-            "yes": "Complex Reasoning",
-            "no": "Complex Reasoning",
-        },
     ),
+}
+
+
+# 本地数据集目录名称映射（用于处理有 subset 的数据集）
+LOCAL_DIR_MAPPING = {
+    "hotpotqa_distractor": "hotpot_qa",
+    "hotpotqa_fullwiki": "hotpot_qa",
 }
 
 
@@ -297,10 +223,28 @@ def load_dataset_with_retry(
 
 
 def load_dataset_from_local(local_path: Path, config: DatasetConfig) -> Optional[Any]:
-    """从本地目录加载数据集"""
+    """
+    从本地目录加载数据集
+
+    支持 subset 子目录结构，例如：
+    - local_path: hotpot_qa/
+    - subset: distractor → 从 hotpot_qa/distractor/ 加载
+    - subset: fullwiki → 从 hotpot_qa/fullwiki/ 加载
+
+    支持 subset 文件名模式，例如：
+    - local_path: musique/
+    - subset: answerable → 加载 musique_ans_v1.0_dev.jsonl
+    - subset: default → 加载 musique_full_v1.0_dev.jsonl
+    """
     from datasets import load_dataset, Dataset
 
     local_path = Path(local_path)
+
+    # 如果指定了 subset，尝试从 local_path/subset 加载
+    if config.subset:
+        subset_path = local_path / config.subset
+        if subset_path.exists() and subset_path.is_dir():
+            local_path = subset_path
 
     if not local_path.exists():
         print(f"   [FAIL] 本地路径不存在: {local_path}")
@@ -310,13 +254,32 @@ def load_dataset_from_local(local_path: Path, config: DatasetConfig) -> Optional
 
     if local_path.is_dir():
         split = config.split
-        split_patterns = [
-            f"**/{split}*.parquet",
-            f"**/{split}/*.parquet",
-            f"**/{split}*.arrow",
-            f"**/{split}/*.arrow",
-        ]
 
+        # 统一切分名称映射（validation -> dev）
+        split_mapping = {"train": "train", "validation": "dev"}
+        actual_split = split_mapping.get(config.split, config.split)
+
+        # MuSiQue 特殊处理：根据 subset 选择正确的文件
+        if config.name == "musique" and config.subset:
+            # subset="answerable" 对应 musique_ans_v1.0_*.jsonl
+            # subset="default" 对应 musique_full_v1.0_*.jsonl
+            subset_prefix = "full" if config.subset == "default" else "ans"
+            split_patterns = [
+                f"**/musique_{subset_prefix}_v1.0_{actual_split}.jsonl",
+                f"**/{actual_split}*.parquet",
+                f"**/{actual_split}/*.parquet",
+                f"**/{actual_split}*.arrow",
+                f"**/{actual_split}/*.arrow",
+            ]
+        else:
+            split_patterns = [
+                f"**/{split}*.parquet",
+                f"**/{split}/*.parquet",
+                f"**/{split}*.arrow",
+                f"**/{split}/*.arrow",
+            ]
+
+        # 搜索匹配的文件
         split_files = []
         for pattern in split_patterns:
             found = list(local_path.glob(pattern))
@@ -324,12 +287,37 @@ def load_dataset_from_local(local_path: Path, config: DatasetConfig) -> Optional
                 split_files.extend(found)
                 break
 
+        # 分类文件类型
         if split_files:
             parquet_files = [f for f in split_files if f.suffix == '.parquet']
             arrow_files = [f for f in split_files if f.suffix == '.arrow']
+            jsonl_files = [f for f in split_files if f.suffix == '.jsonl']
         else:
+            # 后备：全局搜索
             parquet_files = list(local_path.rglob("*.parquet"))
             arrow_files = list(local_path.rglob("*.arrow"))
+            jsonl_files = list(local_path.rglob("*.jsonl"))
+
+        # 优先加载 jsonl 文件（用于 MuSiQue）
+        if jsonl_files:
+            print(f"   找到 {len(jsonl_files)} 个 jsonl 文件")
+            try:
+                # 构建目标文件名（使用已定义的 actual_split 和 subset_prefix）
+                target_filename = f"musique_{subset_prefix}_v1.0_{actual_split}.jsonl"
+                filtered_files = [f for f in jsonl_files if target_filename in str(f)]
+
+                if filtered_files:
+                    print(f"   加载: {[f.name for f in filtered_files]}")
+                    # 指定 split="train" 直接获取 Dataset 而非 DatasetDict
+                    dataset = load_dataset("json", data_files=[str(f) for f in filtered_files], split="train")
+                    print(f"   [OK] 加载成功: {len(dataset)} 条数据")
+                    return dataset
+                else:
+                    print(f"   [WARN] 未找到匹配的文件")
+                    print(f"   期望文件: {target_filename}")
+                    print(f"   可用文件: {[f.name for f in jsonl_files]}")
+            except Exception as e:
+                print(f"   [WARN] 加载 jsonl 失败: {e}")
 
         if parquet_files:
             print(f"   找到 {len(parquet_files)} 个 parquet 文件")
@@ -349,12 +337,13 @@ def load_dataset_from_local(local_path: Path, config: DatasetConfig) -> Optional
             except Exception as e:
                 print(f"   [WARN] 加载 arrow 失败: {e}")
 
+        # 最后尝试：使用 datasets 库直接加载
         try:
             dataset = load_dataset(str(local_path), split=config.split)
             print(f"   [OK] 加载成功: {len(dataset)} 条数据")
             return dataset
-        except:
-            pass
+        except Exception as e:
+            print(f"   [WARN] 直接加载失败: {str(e)[:100]}")
 
     if local_path.is_file():
         suffix = local_path.suffix.lower()
@@ -471,7 +460,7 @@ def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -
 
     if isinstance(evidence_data, dict):
         titles = normalize_to_list(evidence_data.get('title', []))
-        sent_ids = normalize_to_list(evidence_data.get('sent_id', evidence_data.get('sent_idx', [])))
+        sent_ids = normalize_to_list(evidence_data.get('sent_id', []))
 
         doc_map = {doc['title']: doc for doc in documents if 'title' in doc}
 
@@ -503,104 +492,6 @@ def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -
     return " ".join(evidence_parts)
 
 
-def generate_contexts_from_original(
-    item: Dict,
-    config: DatasetConfig,
-    documents: List[Dict]
-) -> List[str]:
-    """
-    从原始数据生成评估用的 contexts 列表
-
-    策略选择：
-    - "sentences": 每个句子作为一个 context
-    - "documents": 每个文档作为一个 context
-    - "paragraphs": 每个段落作为一个 context
-    - "evidence_only": 仅包含证据句子的 context
-    """
-    contexts = []
-    generator_type = config.contexts_generator or "documents"
-
-    if generator_type == "sentences":
-        for doc in documents:
-            if "sentences" in doc:
-                contexts.extend([str(s) for s in doc["sentences"] if s])
-            elif "text" in doc:
-                sentences = [s.strip() for s in doc["text"].split(". ") if s.strip()]
-                contexts.extend(sentences)
-
-    elif generator_type == "documents":
-        for doc in documents:
-            text = doc.get("text", "")
-            if text:
-                contexts.append(text)
-
-    elif generator_type == "paragraphs":
-        for doc in documents:
-            text = doc.get("text", "")
-            paragraphs = [p.strip() for p in text.split("\n\n") if p.strip()]
-            contexts.extend(paragraphs)
-
-    elif generator_type == "evidence_only":
-        evidence_data = item.get(config.evidence_field, {})
-        if isinstance(evidence_data, dict):
-            titles = evidence_data.get('title', [])
-            sent_ids = evidence_data.get('sent_id', [])
-            doc_map = {doc.get('title'): doc for doc in documents}
-
-            for title, sent_id in zip(titles, sent_ids):
-                if title in doc_map:
-                    doc = doc_map[title]
-                    if 'sentences' in doc and 0 <= sent_id < len(doc['sentences']):
-                        contexts.append(str(doc['sentences'][sent_id]))
-
-    return contexts
-
-
-def generate_evidences_from_original(
-    item: Dict,
-    config: DatasetConfig
-) -> List[str]:
-    """
-    从原始数据生成评估用的 evidences 列表
-
-    处理多种格式的 evidences 字段：
-    - List[List[str]]: 结构化三元组 → 转换为描述性文本
-    - List[str]: 直接使用
-    - Dict: 提取相关字段
-    """
-    evidences_field = config.evidences_field
-    if not evidences_field:
-        return []
-
-    evidences_data = item.get(evidences_field, [])
-    evidences = []
-
-    if isinstance(evidences_data, list) and evidences_data:
-        if isinstance(evidences_data[0], list):
-            # List[List[str]]: 结构化三元组格式
-            # 转换为自然语言描述
-            for triple in evidences_data:
-                if len(triple) >= 3:
-                    evidences.append(f"{triple[0]} {triple[1]} {triple[2]}")
-                elif len(triple) == 2:
-                    evidences.append(f"{triple[0]} {triple[1]}")
-                elif triple:
-                    evidences.append(str(triple[0]))
-        elif isinstance(evidences_data[0], str):
-            evidences = [str(ev) for ev in evidences_data if ev]
-        elif isinstance(evidences_data[0], dict):
-            for ev_dict in evidences_data:
-                desc = ev_dict.get("description", "") or \
-                       ev_dict.get("text", "") or \
-                       ev_dict.get("content", "")
-                if desc:
-                    evidences.append(desc)
-    elif isinstance(evidences_data, str):
-        evidences = [evidences_data]
-
-    return evidences
-
-
 def process_item(
     item: Dict,
     config: DatasetConfig,
@@ -610,13 +501,6 @@ def process_item(
     处理单个数据项
 
     返回: (语料库项, 问题项-评估格式, 问题项-原始格式)
-
-    评估格式说明:
-    - answer: 标准答案（框架运行时读取，不修改）
-    - evidence: 证据字符串（评估脚本会自动分割为 evidences）
-    - context: 不包含（框架运行时生成检索上下文）
-    - generated_answer: 不包含（框架运行时生成）
-    - ground_truth: 不包含（评估脚本使用 answer 作为 ground_truth）
     """
     # 提取上下文和文档（用于语料库）
     context_text, documents = extract_context_documents(item, config)
@@ -635,34 +519,23 @@ def process_item(
     else:
         answer_text = str(answer_data)
 
-    # ========== 问题类型映射 ==========
-    original_type = ""
-    if config.question_type_field:
-        original_type = str(item.get(config.question_type_field, ""))
+    corpus_name = config.name
 
-    mapped_question_type = map_question_type(
-        original_type,
-        config.question_type_mapping,
-        config.question_type_default
-    )
-
-    corpus_name = config.name  # 统一使用数据集名称，而非 question_id
-
-    # ========== 构建语料库项 ==========
+    # 构建语料库项
     corpus_item = {
         "corpus_name": corpus_name,
         "context": context_text,
         "documents": documents,
     }
 
-    # ========== 构建评估格式问题项 ==========
+    # 构建评估格式问题项
     question_eval = {
         "id": question_id,
-        "source": config.name,           # 使用数据集名称，而非 corpus_name
+        "source": config.name,
         "question": question_text,
-        "answer": answer_text,          # 标准答案
-        "evidence": evidence_text,      # 证据字符串（评估脚本会自动分割）
-        "question_type": mapped_question_type,
+        "answer": answer_text,
+        "evidence": evidence_text,
+        "question_type": config.question_type_default,
     }
 
     # 保留额外字段（不覆盖已存在的评估字段）
@@ -670,14 +543,11 @@ def process_item(
         if field in item and field not in question_eval:
             question_eval[field] = normalize_nested_data(item[field])
 
-    # ========== 构建原始格式问题项 ==========
+    # 构建原始格式问题项（保留配置以备扩展）
     if config.preserve_all_original_fields:
         question_original = normalize_nested_data(item)
     else:
         question_original = {}
-        for field in config.original_fields:
-            if field in item:
-                question_original[field] = normalize_nested_data(item[field])
 
     return corpus_item, question_eval, question_original
 
@@ -694,9 +564,6 @@ def convert_dataset(
         (语料库列表, 评估格式问题列表, 原始格式问题列表)
     """
     print(f"\n[PROC] 转换数据集: {config.name}")
-    print(f"   原始字段: {config.original_fields}")
-    if config.question_type_mapping:
-        print(f"   类型映射: {config.question_type_mapping}")
 
     total = len(dataset)
     if max_questions:
@@ -756,19 +623,18 @@ def save_dataset(
     dataset_name: str
 ) -> Tuple[Path, Path]:
     """
-    保存数据集（评估格式 + 原始格式）
+    保存数据集
 
     输出文件：
     - Corpus/{dataset_name}.parquet / .json
     - Questions/{dataset_name}_questions.parquet / .json (评估格式)
-    - Questions/{dataset_name}_questions_full.json (完整原始格式)
     """
     corpus_dir = output_dir / "Corpus"
     questions_dir = output_dir / "Questions"
     corpus_dir.mkdir(parents=True, exist_ok=True)
     questions_dir.mkdir(parents=True, exist_ok=True)
 
-    # ========== 保存语料库 ==========
+    # 保存语料库
     corpus_parquet = corpus_dir / f"{dataset_name}.parquet"
     corpus_json = corpus_dir / f"{dataset_name}.json"
 
@@ -787,7 +653,7 @@ def save_dataset(
     print(f"   JSON: {corpus_json}")
     print(f"   文档数: {len(corpus_list)}")
 
-    # ========== 保存问题集（评估格式） ==========
+    # 保存问题集（评估格式）
     questions_parquet = questions_dir / f"{dataset_name}_questions.parquet"
     questions_json = questions_dir / f"{dataset_name}_questions.json"
 
@@ -796,19 +662,20 @@ def save_dataset(
     with open(questions_json, 'w', encoding='utf-8') as f:
         json.dump(questions_eval, f, indent=2, ensure_ascii=False)
 
-    print(f"\n[OK] 问题集（评估格式）已保存:")
+    print(f"\n[OK] 问题集已保存:")
     print(f"   Parquet: {questions_parquet}")
     print(f"   JSON: {questions_json}")
     print(f"   问题数: {len(questions_eval)}")
     print(f"   字段: {list(questions_eval[0].keys()) if questions_eval else 'N/A'}")
 
-    # ========== 保存问题集（完整原始格式） ==========
-    if questions_original:
-        original_json = questions_dir / f"{dataset_name}_questions_full.json"
-        with open(original_json, 'w', encoding='utf-8') as f:
-            json.dump(questions_original, f, indent=2, ensure_ascii=False)
-        print(f"\n[OK] 问题集（完整格式）已保存:")
-        print(f"   JSON: {original_json}")
+    # 已禁用：评估格式已通过 extra_standard_fields 包含所有必要字段
+    # 如需完整原始格式，可从原始数据集直接读取
+    # if questions_original:
+    #     original_json = questions_dir / f"{dataset_name}_questions_full.json"
+    #     with open(original_json, 'w', encoding='utf-8') as f:
+    #         json.dump(questions_original, f, indent=2, ensure_ascii=False)
+    #     print(f"\n[OK] 问题集（完整格式）已保存:")
+    #     print(f"   JSON: {original_json}")
 
     return corpus_parquet, questions_parquet
 
@@ -863,9 +730,6 @@ def list_datasets():
     for name, config in DATASET_CONFIGS.items():
         print(f"  {name:15} - {config.description}")
         print(f"                  HuggingFace: {config.hf_path}")
-        print(f"                  原始字段: {config.original_fields}")
-        if config.question_type_mapping:
-            print(f"                  类型映射: {config.question_type_mapping}")
     print("-" * 80)
     print(f"\n使用方法:")
     print(f"  python Datasets/download_datasets.py --datasets hotpotqa musique")
@@ -974,7 +838,9 @@ def main():
         if args.local:
             local_path = Path(args.local)
         elif not download_mode:
-            local_path = raw_dir / dataset_name
+            # 使用映射获取本地目录名称
+            local_dir_name = LOCAL_DIR_MAPPING.get(dataset_name, dataset_name)
+            local_path = raw_dir / local_dir_name
         else:
             local_path = None
 
