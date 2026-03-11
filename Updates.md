@@ -32,3 +32,4 @@
 [2026-03-05 22:12:08] 更新运行.md：新增 LinearRAG 框架状态、运行命令（完整/仅索引/仅查询/YAML 调度）与参数说明，补充 sample 与 corpus_sample 语义及 skip-build 索引依赖说明。
 [2026-03-05 22:16:54] 更新运行.md：在 LinearRAG 章节新增依赖安装说明（linearrag requirements + SpaCy en_core_web_trf 模型）。
 [2026-03-06 11:06:00] 修复 LinearRAG 结果 context 重复：在 Examples/run_linearrag.py 的 benchmark 输出阶段新增 normalize_context_list，去除 passage 编号前缀后按正文保序去重，不修改 LinearRAG 核心检索逻辑。
+[2026-03-10 16:30:00] 修复 Datasets/download_datasets.py 的 2Wiki 转换：questions_full 改为直接保存原始规范 schema（不再包 _original）；2Wiki 标准问题输出额外保留 type/evidences/supporting_facts/context；并改为每题独立语料（source/corpus_name=id），避免整套数据共享同一 source 导致 benchmark 对齐错误。
