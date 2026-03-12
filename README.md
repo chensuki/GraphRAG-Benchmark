@@ -5,6 +5,7 @@
 [![Static Badge](https://img.shields.io/badge/arxiv-2506.05690-ff0000?style=for-the-badge&labelColor=000)](https://arxiv.org/abs/2506.05690)  [![Static Badge](https://img.shields.io/badge/huggingface-fcd022?style=for-the-badge&logo=huggingface&logoColor=000)](https://huggingface.co/datasets/GraphRAG-Bench/GraphRAG-Bench)  [![Static Badge](https://img.shields.io/badge/leaderboard-steelblue?style=for-the-badge&logo=googlechrome&logoColor=ffffff)](https://graphrag-bench.github.io/)  [![Static Badge](https://img.shields.io/badge/license-mit-teal?style=for-the-badge&labelColor=000)](https://github.com/GraphRAG-Bench/GraphRAG-Benchmark/blob/main/LICENSE)
 
 <p>
+    <a href="#关于本项目" style="text-decoration: none; font-weight: bold;">📌关于本项目</a> •
     <a href="#news" style="text-decoration: none; font-weight: bold;">🎉News</a> •
     <a href="#about" style="text-decoration: none; font-weight: bold;">📖About</a> •
     <a href="#leaderboards" style="text-decoration: none; font-weight: bold;">🏆Leaderboards</a> •
@@ -18,6 +19,55 @@
     <a href="#stars" style="text-decoration: none; font-weight: bold;">✨Stars History</a>
   </p>
 </div>
+
+<h2 id="关于本项目">📌 关于本项目</h2>
+
+本项目基于 [GraphRAG-Bench/GraphRAG-Benchmark](https://github.com/GraphRAG-Bench/GraphRAG-Benchmark) 进行了重构和优化，主要改进如下：
+
+### 🔧 统一化改进
+
+**1. 统一的适配器模式**
+- 引入 `BaseFrameworkAdapter` 抽象基类，标准化所有框架接口
+- 支持 6 种 GraphRAG 框架：LightRAG、ClearRAG、LinearRAG、Fast-GraphRAG、HippoRAG2、DigiMON
+- 使用注册表模式实现框架的动态发现和延迟加载
+
+**2. YAML 配置简化**
+
+- 单一配置文件 `configs/template.yaml` 管理所有框架参数
+- 支持全局配置与框架特定配置的层级覆盖
+- 简化命令行参数，通过配置文件控制实验
+
+**3. 统一的运行流程**
+- `run_from_yaml.py` 作为唯一入口，支持多框架批量运行
+- `FrameworkRunner` 提供标准化的索引构建、查询、结果保存流程
+- 异步并发处理，支持语料库级别的并发控制
+
+### 📝 主要变化
+
+| 模块 | 原项目 | 本项目 |
+|------|--------|--------|
+| 框架运行 | 各框架独立脚本 | 统一 `runner.py` + 适配器模式 |
+| 配置方式 | 分散在各脚本中 | 集中式 YAML 配置 |
+| 框架集成 | 直接调用框架API | 适配器抽象层隔离差异 |
+| 参数管理 | 命令行参数为主 | YAML配置优先 |
+| 扩展性 | 需修改主流程 | 只需实现新适配器 |
+
+### 🚀 快速开始
+
+```bash
+# 运行单个框架
+python Examples/run_from_yaml.py --framework lightrag
+
+# 运行所有启用的框架
+python Examples/run_from_yaml.py --framework all
+
+# 干运行（查看配置）
+python Examples/run_from_yaml.py --dry-run
+```
+
+详细配置说明请参考 `configs/template.yaml`。
+
+---
 
 If you find this benchmark helpful, please cite our paper:
 
@@ -35,11 +85,16 @@ This repository is for the GraphRAG-Bench project, a comprehensive benchmark for
 
 <h2 id="news">🎉 News</h2>
 
+- **[2026-01-26]** Our [GraphRAG Benchmark](https://github.com/GraphRAG-Bench/GraphRAG-Benchmark) is accepted by **ICLR'26**.
+- **[2026-01-26]** Our [LinearRAG](https://github.com/DEEP-PolyU/LinearRAG) is accepted by **ICLR'26**.
 - **[2025-10-27]** We release [LinearRAG](https://github.com/DEEP-PolyU/LinearRAG), a relation-free method for efficient GraphRAG.
 - **[2025-08-24]** We support [DIGIMON](https://github.com/JayLZhou/GraphRAG) for flexible benchmarking across GraphRAG models.
-- **[2025-05-25]** We release [GraphRAG-Bench](https://graphrag-bench.github.io), the benchmark for evaluating GraphRAG models.
-- **[2025-05-14]** We release the [GraphRAG-Bench dataset](https://huggingface.co/datasets/GraphRAG-Bench/GraphRAG-Bench).
+- **[2025-05-25]** We release the [GraphRAG Benchmark](https://graphrag-bench.github.io) for evaluating GraphRAG models.
 - **[2025-01-21]** We release the [GraphRAG survey](https://github.com/DEEP-PolyU/Awesome-GraphRAG).
+
+📑 Please [cite our paper](https://arxiv.org/abs/2506.05690) if you find our survey or repository helpful!
+
+📬 **Contact us via emails:** {xiangzhishang,wuchuanjie}@stu.xmu.edu.cn, qinggang.zhang@polyu.edu.hk
 
 <h2 id="about">📖 About</h2>
 

@@ -1,0 +1,111 @@
+# GraphRAG Benchmark 实验配置
+# 参数说明：全局参数 + 框架特有参数
+
+# 运行控制
+run:
+  framework: clearrag          # auto, all, 或框架名
+  run_id: exp-001              # 实验ID（留空自动生成）
+  continue_on_error: false     # 出错时是否继续
+
+# 数据集配置
+dataset:
+  subset: sample               # sample, medical, novel, hotpotqa_distractor, 2wikimultihop, musique
+  sample: 5                 # 问题采样数（null=全部）
+  corpus_sample: null          # 语料库采样数（null=全部）
+
+# LLM 配置
+llm:
+  model: deepseek-chat
+  base_url: https://api.deepseek.com/v1
+  api_key: ""
+
+# 嵌入配置
+embedding:
+  provider: api                # api, zhipu, openai, local
+  model: embedding-3
+  base_url: https://open.bigmodel.cn/api/paas/v4
+  api_key: ""
+
+# 检索配置
+retrieval:
+  top_k: 5
+
+# Neo4j 配置
+neo4j:
+  uri: bolt://localhost:7687
+  user: neo4j
+  password: your-password
+  database: neo4j
+
+# 输出路径
+# predictions: {output.root}/{framework}/{subset}/{run_id}/
+# workspace: 由各框架配置中的 workspace_dir 指定
+output:
+  root: ./results
+
+# 框架配置（仅框架特有参数）
+frameworks:
+  lightrag:
+    enabled: true
+    workspace_dir: ./workspace/lightrag_workspace    # 工作目录
+    mode: API                         # API 或 ollama
+    embed_provider: zhipu             # 覆盖全局 embedding.provider
+    corpus_concurrency: 1             # 语料库并发数
+    skip_build: false                 # 跳过索引构建
+    index_only: false                 # 仅构建索引
+    chunk_token_size: 1200            # 分块大小
+    chunk_overlap_token_size: 100     # 分块重叠
+
+  clearrag:
+    enabled: true
+    workspace_dir: ./workspace/clearrag_workspace   # 工作目录
+    activation_mode: semantic_propagation   # vector_search(快) / semantic_propagation(精确)
+    passage_retrieval_mode: none            # vector / pagerank / none
+    fast: false                             # 快速模式（禁用 Reflexion）
+    max_concurrency: 5                      # 构建并发数
+    corpus_concurrency: 2                   # 语料库并发数
+    skip_build: false
+
+  linearrag:
+    enabled: true
+    workspace_dir: ./workspace/linearrag_workspace   # 工作目录
+    embed_provider: zhipu             # 覆盖全局 embedding.provider
+    max_iterations: 3                 # 最大迭代次数
+    iteration_threshold: 0.4          # 迭代阈值
+    top_k_sentence: 3                 # 每个实体的 top-k 句子数
+    use_vectorized: false             # 向量化检索
+    spacy_model: en_core_web_trf      # NER 模型
+    max_workers: 8                    # NER 并发数
+    corpus_concurrency: 1             # 语料库并发数
+    skip_build: false
+
+  fast-graphrag:
+    enabled: true
+    workspace_dir: ./workspace/fast-graphrag_workspace   # 工作目录
+    mode: API                              # API 或 ollama
+    embed_provider: api                    # api 或 local
+    corpus_concurrency: 1                  # 语料库并发数
+    skip_build: false
+    # 高级参数（可选）
+    domain: ""                             # 自定义分析域（空则使用默认）
+    entity_types: []                       # 自定义实体类型（空则使用默认）
+
+  hipporag2:
+    enabled: true
+    workspace_dir: ./workspace/hipporag2_workspace   # 工作目录
+    mode: API                              # API 或 ollama
+    embed_model_path: "BAAI/bge-large-en-v1.5"  # 本地 embedding 模型路径（必需）
+    corpus_concurrency: 1                  # 语料库并发数
+    skip_build: false
+    # 高级参数（可选）
+    chunk_token_size: 256                  # 分块 token 大小
+    chunk_overlap: 32                      # 分块重叠
+    force_index_from_scratch: true         # 强制从头构建索引
+    rerank_dspy_file_path: "hipporag/prompts/dspy_prompts/filter_llama3.3-70B-Instruct.json"
+    max_qa_steps: 3                        # QA 最大步骤数
+    graph_type: "facts_and_sim_passage_node_unidirectional"
+    embedding_batch_size: 8
+    openie_mode: "online"                  # online / offline
+
+  digimon:
+    enabled: false

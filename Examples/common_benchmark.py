@@ -35,17 +35,15 @@ def build_error_result(
     question_type_default: str = "",
     message_prefix: str = "Query failed",
 ) -> dict:
-    """Return a benchmark-compatible error record."""
-    return {
-        "id": question.get("id", ""),
-        "question": question.get("question", ""),
+    """Return a benchmark-compatible error record, preserving all original fields."""
+    result = dict(question)  # 保留所有原始字段
+    result.update({
         "source": source,
         "context": [],
-        "evidence": question.get("evidence", ""),
-        "question_type": question.get("question_type", question_type_default),
         "generated_answer": f"{message_prefix}: {error}",
         "ground_truth": question.get("answer", ""),
-    }
+    })
+    return result
 
 
 def load_corpus_records(corpus_path: str) -> List[dict]:
@@ -111,36 +109,18 @@ def merge_corpus_by_name(corpus_records: List[dict]) -> List[dict]:
 
 
 def load_question_records(questions_path: str) -> List[dict]:
-    """Load question records from parquet/json into benchmark schema."""
+    """Load question records from parquet/json, preserving all original fields."""
     if questions_path.endswith(".json"):
         with open(questions_path, "r", encoding="utf-8") as f:
             question_data = json.load(f)
         if not isinstance(question_data, list):
             raise ValueError(f"Question data must be a list, got: {type(question_data)}")
-        return [
-            {
-                "id": item.get("id", ""),
-                "source": item.get("source", ""),
-                "question": item.get("question", ""),
-                "answer": item.get("answer", ""),
-                "question_type": item.get("question_type", ""),
-                "evidence": item.get("evidence", ""),
-            }
-            for item in question_data
-        ]
+        # 保留所有原始字段
+        return question_data
 
     questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-    return [
-        {
-            "id": item["id"],
-            "source": item["source"],
-            "question": item["question"],
-            "answer": item["answer"],
-            "question_type": item["question_type"],
-            "evidence": item["evidence"],
-        }
-        for item in questions_dataset
-    ]
+    # 保留所有原始字段（转换为 dict）
+    return [dict(item) for item in questions_dataset]
 
 
 def build_output_path(output_dir: str, filename: str) -> str:

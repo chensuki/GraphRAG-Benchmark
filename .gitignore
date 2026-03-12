@@ -6,7 +6,6 @@ results/
 
 # 系统和目录
 OTHER/
-.spec-workflow
 .claude
 claude.md
 AGENTS.md
@@ -56,3 +55,8 @@ fast-graphrag_workspace/
 clearrag_workspace/
 lightrag_workspace/
 linearrag_workspace/
+hipporag2_workspace/
+workspace/
+
+# 配置文件
+**/experiment.yaml
