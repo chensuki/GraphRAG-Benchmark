@@ -65,7 +65,7 @@ class DatasetConfig:
     context_field: str = "context"
     evidence_field: str = "supporting_facts"
 
-    # 问题类型（统一为 Complex Reasoning）
+    # 问题类型默认值
     question_type_default: str = "Complex Reasoning"
 
     # 上下文处理
@@ -521,6 +521,12 @@ def process_item(
 
     corpus_name = config.name
 
+    # 确定 question_type
+    question_type = config.question_type_default
+    has_raw_type = "type" in item
+    if has_raw_type:
+        question_type = str(item.get("type", config.question_type_default))
+
     # 构建语料库项
     corpus_item = {
         "corpus_name": corpus_name,
@@ -535,11 +541,14 @@ def process_item(
         "question": question_text,
         "answer": answer_text,
         "evidence": evidence_text,
-        "question_type": config.question_type_default,
+        "question_type": question_type,
     }
 
     # 保留额外字段（不覆盖已存在的评估字段）
     for field in config.extra_standard_fields:
+        # type 字段已用作 question_type，不再重复保存
+        if field == "type" and has_raw_type:
+            continue
         if field in item and field not in question_eval:
             question_eval[field] = normalize_nested_data(item[field])
 

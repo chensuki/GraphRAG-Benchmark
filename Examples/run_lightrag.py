@@ -20,6 +20,7 @@ from common_benchmark import (
     group_questions_by_source,
     load_corpus_records,
     load_question_records,
+    merge_corpus_by_name,
     save_results_json,
 )
 from subset_registry import get_subset_paths, get_supported_subsets
@@ -448,6 +449,13 @@ def main():
     except Exception as e:
         logging.error(f"Failed to load corpus: {e}")
         return
+
+    # Merge corpus by name (critical for multi-hop QA datasets)
+    # Without this, thousands of documents would create separate LightRAG instances
+    # and cause Neo4j deadlocks
+    original_count = len(corpus_data)
+    corpus_data = merge_corpus_by_name(corpus_data)
+    logging.info(f"Merged {original_count} documents into {len(corpus_data)} corpora")
 
     total_corpora = len(corpus_data)
     if args.corpus_sample and args.corpus_sample < len(corpus_data):

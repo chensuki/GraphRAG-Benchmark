@@ -24,6 +24,7 @@ from common_benchmark import (
     group_questions_by_source,
     load_corpus_records,
     load_question_records,
+    merge_corpus_by_name,
     save_results_json,
 )
 from subset_registry import get_subset_paths, get_supported_subsets
@@ -492,10 +493,10 @@ def main():
     corpus_data = load_corpus_records(corpus_path)
     logger.info(f"📖 已加载 {len(corpus_data)} 个语料库文档")
     
-    # 语料库采样
-    if args.corpus_sample and args.corpus_sample < len(corpus_data):
-        corpus_data = corpus_data[:args.corpus_sample]
-        logger.info(f"📊 语料库采样: {args.corpus_sample}")
+    # Merge corpus by name (critical for multi-hop QA datasets)
+    original_count = len(corpus_data)
+    corpus_data = merge_corpus_by_name(corpus_data)
+    logger.info(f"📖 合并 {original_count} 个文档为 {len(corpus_data)} 个语料库")
     
     question_data = load_question_records(questions_path)
     grouped_questions = group_questions_by_source(question_data)

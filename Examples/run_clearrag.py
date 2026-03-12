@@ -40,6 +40,7 @@ from common_benchmark import (
     group_questions_by_source,
     load_corpus_records,
     load_question_records,
+    merge_corpus_by_name,
     save_results_json,
 )
 from subset_registry import get_subset_paths, get_supported_subsets
@@ -364,6 +365,11 @@ def main():
     except Exception as e:
         logger.error(f"❌ 加载语料库失败: {e}")
         return
+
+    # Merge corpus by name (critical for multi-hop QA datasets)
+    original_count = len(corpus_data)
+    corpus_data = merge_corpus_by_name(corpus_data)
+    logger.info(f"📖 合并 {original_count} 个文档为 {len(corpus_data)} 个语料库")
 
     total_corpora = len(corpus_data)
     if args.corpus_sample and args.corpus_sample < len(corpus_data):

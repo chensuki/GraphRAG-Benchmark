@@ -197,11 +197,19 @@ async def main(args: argparse.Namespace):
         file_data = json.load(f)  # Now a list of question items
     
     # Define the evaluation metrics for each question type
+    # 标准类型
     metric_config = {
         'Fact Retrieval': ["rouge_score", "answer_correctness"],
         'Complex Reasoning': ["rouge_score", "answer_correctness"],
         'Contextual Summarize': ["answer_correctness", "coverage_score"],
-        'Creative Generation': ["answer_correctness", "coverage_score", "faithfulness"]
+        'Creative Generation': ["answer_correctness", "coverage_score", "faithfulness"],
+        # HotpotQA 原始类型
+        'bridge': ["rouge_score", "answer_correctness"],
+        'comparison': ["rouge_score", "answer_correctness"],
+        # 2WikiMultihop 原始类型
+        'compositional': ["rouge_score", "answer_correctness"],
+        'inference': ["rouge_score", "answer_correctness"],
+        'bridge_comparison': ["rouge_score", "answer_correctness"],
     }
     
     # Group data by question type

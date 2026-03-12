@@ -75,6 +75,41 @@ def load_corpus_records(corpus_path: str) -> List[dict]:
     ]
 
 
+def merge_corpus_by_name(corpus_records: List[dict]) -> List[dict]:
+    """
+    Merge corpus records by corpus_name.
+    
+    This is critical for multi-hop QA datasets where the corpus file contains
+    thousands of individual documents, but they all share the same corpus_name.
+    Without merging, each document would create a separate LightRAG instance
+    and try to write to the same Neo4j workspace concurrently, causing deadlocks.
+    
+    Args:
+        corpus_records: List of {"corpus_name": str, "context": str} records
+        
+    Returns:
+        List of merged records, one per unique corpus_name
+    """
+    grouped: Dict[str, List[str]] = {}
+    for item in corpus_records:
+        name = item.get("corpus_name", "Unknown")
+        context = item.get("context", "")
+        if name not in grouped:
+            grouped[name] = []
+        if context:  # 只添加非空 context
+            grouped[name].append(context)
+    
+    # 合并同一 corpus_name 的所有 context
+    return [
+        {
+            "corpus_name": name,
+            "context": "\n\n".join(contexts),
+        }
+        for name, contexts in grouped.items()
+        if contexts  # 只返回有内容的记录
+    ]
+
+
 def load_question_records(questions_path: str) -> List[dict]:
     """Load question records from parquet/json into benchmark schema."""
     if questions_path.endswith(".json"):

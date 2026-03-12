@@ -4,6 +4,12 @@ from typing import Dict, List, Tuple
 
 
 SUBSET_DATA_PATHS: Dict[str, Dict[str, str]] = {
+    # 样本数据集
+    "sample": {
+        "corpus": "./Datasets/Corpus/sample_corpus.json",
+        "questions": "./Datasets/Questions/sample_questions.json",
+    },
+
     # 原有数据集
     "medical": {
         "corpus": "./Datasets/Corpus/medical.parquet",
@@ -45,6 +51,7 @@ SUBSET_DATA_PATHS: Dict[str, Dict[str, str]] = {
 
 
 UNIFIED_SUBSETS: Tuple[str, ...] = (
+    "sample",
     "medical",
     "medical_100",
     "novel",

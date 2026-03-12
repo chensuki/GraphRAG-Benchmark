@@ -49,10 +49,18 @@ METRIC_NAMES = {
 
 # 问题类型显示名称
 QUESTION_TYPE_NAMES = {
+    # 标准类型
     'Complex Reasoning': 'Complex\nReasoning',
     'Contextual Summarize': 'Contextual\nSummarize',
     'Creative Generation': 'Creative\nGeneration',
     'Fact Retrieval': 'Fact\nRetrieval',
+    # HotpotQA 原始类型
+    'bridge': 'Bridge',
+    'comparison': 'Comparison',
+    # 2WikiMultihop 原始类型
+    'compositional': 'Compositional',
+    'inference': 'Inference',
+    'bridge_comparison': 'Bridge\nComparison',
 }
 
 
