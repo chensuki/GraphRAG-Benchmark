@@ -6,6 +6,7 @@
 
 <p>
     <a href="#关于本项目" style="text-decoration: none; font-weight: bold;">📌关于本项目</a> •
+    <a href="GUIDE.md" style="text-decoration: none; font-weight: bold;">📘运行指南</a> •
     <a href="#news" style="text-decoration: none; font-weight: bold;">🎉News</a> •
     <a href="#about" style="text-decoration: none; font-weight: bold;">📖About</a> •
     <a href="#leaderboards" style="text-decoration: none; font-weight: bold;">🏆Leaderboards</a> •
@@ -55,9 +56,14 @@
 ### 🚀 快速开始
 
 ```bash
+# 复制配置文件并编辑
+cp configs/template.yaml configs/my_config.yaml
+```
+
+```bash
 # 运行单个框架
 python Examples/run_from_yaml.py --framework lightrag
-
+```
 # 运行所有启用的框架
 python Examples/run_from_yaml.py --framework all
 
@@ -65,7 +71,7 @@ python Examples/run_from_yaml.py --framework all
 python Examples/run_from_yaml.py --dry-run
 ```
 
-详细配置说明请参考 `configs/template.yaml`。
+详细配置说明请参考 [📘 GUIDE.md](GUIDE.md) 运行指南。
 
 ---
 
