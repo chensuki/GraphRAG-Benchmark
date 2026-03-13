@@ -33,6 +33,8 @@ class OpenAICompatibleEmbeddingService:
         self.base_url = base_url
         self.api_key = api_key
         self.dimensions = dimensions
+        self.embedding_dim = dimensions or 1024
+        self.max_token_size = 8192
 
     async def encode(self, texts: List[str], model: Optional[str] = None) -> np.ndarray:
         import httpx
