@@ -166,13 +166,7 @@ class FrameworkConfig:
 python Examples/run_from_yaml.py --framework lightrag
 ```
 
-### 模式 2：后备模式（原始脚本）
-
-```bash
-python Examples/run_from_yaml.py --framework lightrag --legacy
-```
-
-### 模式 3：直接使用适配器
+### 模式 2：直接使用适配器
 
 ```python
 from Examples.adapters import create_adapter, FrameworkConfig
@@ -191,10 +185,10 @@ await adapter.aclose()
 
 | 旧代码 | 新代码 |
 |--------|--------|
-| `run_lightrag.py` 中的索引逻辑 | `LightRAGAdapter.abuild_index()` |
-| `run_lightrag.py` 中的查询逻辑 | `LightRAGAdapter.aquery()` |
-| `run_lightrag.py` 中的数据加载 | `FrameworkRunner` 自动处理 |
-| `run_lightrag.py` 中的并发控制 | `FrameworkRunner` 自动处理 |
+| `run_lightrag.py` 独立脚本 | `run_from_yaml.py --framework lightrag` |
+| `run_clearrag.py` 独立脚本 | `run_from_yaml.py --framework clearrag` |
+| 各脚本独立的数据加载 | `FrameworkRunner` 自动处理 |
+| 各脚本独立的并发控制 | `FrameworkRunner` 自动处理 |
 
 ## 已实现适配器
 
@@ -203,6 +197,6 @@ await adapter.aclose()
 | LinearRAG | ✅ 完整 | 支持向量化/迭代检索 |
 | LightRAG | ✅ 完整 | 支持 API/Ollama 模式 |
 | ClearRAG | ✅ 完整 | 使用现有 Benchmark 适配器 |
-| HippoRAG2 | ⏳ 占位 | 使用 `--legacy` 后备模式 |
-| Fast-GraphRAG | ⏳ 占位 | 使用 `--legacy` 后备模式 |
-| DIGIMON | ⏳ 占位 | 使用 `--legacy` 后备模式 |
+| HippoRAG2 | ✅ 完整 | 支持本地 BGE 嵌入 |
+| Fast-GraphRAG | ✅ 完整 | 支持 HF/API 嵌入 |
+| DIGIMON | ✅ 完整 | 统一框架配置 |

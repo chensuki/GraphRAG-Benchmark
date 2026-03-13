@@ -46,16 +46,8 @@ Then you can run the following command to indexing and inference
 ```shell
 export LLM_API_KEY=your_actual_api_key_here
 
-python run_lightrag.py \
-  --subset medical \
-  --mode API \
-  --base_dir ./Examples/lightrag_workspace \
-  --model_name bge-large-en-v1.5 \
-  --embed_model bge-base-en \
-  --retrieve_topk 5 \
-  # --sample 100 \
-  --llm_base_url https://api.openai.com/v1
-
+# 使用统一 YAML 配置运行器
+python run_from_yaml.py --framework lightrag
 ```
 
 #### b. fast-graphrag
@@ -173,14 +165,8 @@ Then you can run the following command to indexing and inference:
 ```shell
 export LLM_API_KEY=your_actual_api_key_here
 
-python run_fast-graphrag.py \
-  --subset medical \
-  --base_dir ./Examples/fast-graphrag_workspace \
-  --model_name gpt-4o-mini \
-  --embed_model_path bge-large-en-v1.5 \
-  # --sample 100 \
-  --llm_base_url https://api.openai.com/v1
-
+# 使用统一 YAML 配置运行器
+python run_from_yaml.py --framework fast-graphrag
 ```
 
 #### c. hipporag2
@@ -340,28 +326,16 @@ Then you can run the following command to indexing and inference:
 ```shell
 export OPENAI_API_KEY=your_actual_api_key_here
 
-python run_hipporag2.py \
-  --subset medical \
-  --mode API\
-  --base_dir ./Examples/hipporag2_workspace \
-  --model_name gpt-4o-mini \
-  --embed_model_path /path/to/your/local/bge-large-en-v1.5 \
-  # --sample 100 \
-  --llm_base_url https://api.openai.com/v1
+# 使用统一 YAML 配置运行器
+python run_from_yaml.py --framework hipporag2
 ```
 
 #### d. DIGIMON
 DIGIMON is a unified framework that integrates multiple GraphRAG frameworks: [DIGIMON: Deep Analysis of Graph-Based Retrieval-Augmented Generation (RAG) Systems](https://github.com/JayLZhou/GraphRAG)
-1. Move `run_digimon.py` into the corresponding DIGIMON project.  
-2. Modify the related config files according to the DIGIMON instructions.  
-3. Run the following command:
 
 ```bash
-python run_digimon.py \
-  --subset novel \
-  --option ./Option/Method/HippoRAG.yaml \
-  --output_dir ./results/test \
-  # --sample 100
+# 使用统一 YAML 配置运行器
+python run_from_yaml.py --framework digimon
 ```
 
 We will continue updating other GraphRAG frameworks as much as possible. If you wish to integrate a different framework, you can refer to the structure of our result format. As long as your returned output matches the following fields, the evaluation code will run successfully:
