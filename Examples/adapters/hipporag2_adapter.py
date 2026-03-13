@@ -34,6 +34,13 @@ class HippoRAG2Adapter(BaseFrameworkAdapter):
         self._tokenizer = None
         self._chunks = []
 
+        # HippoRAG2 仅支持本地模型
+        if config.embed_type == "api":
+            logger.warning(
+                "HippoRAG2 only supports local embedding models. "
+                f"Ignoring embed_type=api, using local model: {config.embed_model}"
+            )
+
         # 框架特定配置
         self._embed_model_path = config.get_extra("embed_model_path", config.embed_model)
         self._chunk_token_size = config.get_extra("chunk_token_size", DEFAULT_CHUNK_TOKEN_SIZE)
@@ -50,6 +57,8 @@ class HippoRAG2Adapter(BaseFrameworkAdapter):
         self._graph_type = config.get_extra("graph_type", "facts_and_sim_passage_node_unidirectional")
         self._embedding_batch_size = config.get_extra("embedding_batch_size", 8)
         self._openie_mode = config.get_extra("openie_mode", "online")
+
+        logger.info(f"HippoRAG2 using local embedding model: {self._embed_model_path}")
 
     def _load_tokenizer(self) -> Any:
         """加载 tokenizer"""

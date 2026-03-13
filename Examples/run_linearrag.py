@@ -179,33 +179,27 @@ def create_embedding_model(
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
 ):
-    """创建嵌入模型"""
-    if provider == "zhipu":
-        from src.zhipu_embedding import create_zhipu_embedding_model
-        return create_zhipu_embedding_model(
-            api_key=api_key,
-            model_name=model_name,
-            batch_size=128
-        )
-    elif provider == "api":
-        # 使用 zhipu 或其他 OpenAI 兼容 API（通过 base_url 区分）
-        if base_url and "bigmodel" in base_url:
-            from src.zhipu_embedding import create_zhipu_embedding_model
-            return create_zhipu_embedding_model(
-                api_key=api_key,
-                model_name=model_name,
-                batch_size=128
-            )
-        else:
-            # 通用 OpenAI 兼容 API（使用 sentence-transformers 或直接请求）
-            # 这里暂时使用本地模型作为后备
-            logger.warning(f"使用本地模型作为后备: {model_name}")
-            from sentence_transformers import SentenceTransformer
-            return SentenceTransformer(model_name, device="cuda" if _has_cuda() else "cpu")
-    else:
-        # 使用本地 HuggingFace 模型
+    """创建嵌入模型（统一使用 OpenAI 兼容接口）"""
+    from src.openai_embedding import create_openai_embedding_model
+
+    # 智谱 batch_size 限制
+    max_batch = 64 if provider == "zhipu" or (base_url and "bigmodel" in base_url) else None
+
+    # embedding-3 维度配置
+    dimensions = 1024 if "embedding-3" in model_name else None
+
+    if provider == "local":
         from sentence_transformers import SentenceTransformer
         return SentenceTransformer(model_name, device="cuda" if _has_cuda() else "cpu")
+
+    return create_openai_embedding_model(
+        api_key=api_key,
+        model_name=model_name,
+        base_url=base_url,
+        batch_size=64,
+        dimensions=dimensions,
+        max_batch_size=max_batch
+    )
 
 
 def _has_cuda():

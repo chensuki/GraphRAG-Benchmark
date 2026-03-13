@@ -10,7 +10,8 @@ llm:
   model: deepseek-chat
 
 embedding:
-  provider: api
+  type: api                    # api | local
+  provider: zhipu              # zhipu | openai | custom
   model: embedding-3
 
 output:
@@ -37,7 +38,7 @@ import yaml
 from subset_registry import FRAMEWORK_SUPPORTED_SUBSETS, get_subset_paths
 from runner import FrameworkRunner
 from adapters import FrameworkConfig, has_adapter
-from adapters.base import DEFAULT_EMBED_PROVIDER, DEFAULT_TOP_K, DEFAULT_MAX_CONCURRENCY
+from adapters.base import DEFAULT_EMBED_TYPE, DEFAULT_EMBED_PROVIDER, DEFAULT_TOP_K, DEFAULT_MAX_CONCURRENCY
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -96,11 +97,14 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
     # 运行ID
     run_id = run_cfg.get("run_id") or datetime.now().strftime("%Y%m%d-%H%M%S")
 
-    # 框架配置覆盖嵌入设置
+    # 嵌入配置
+    embed_type = fw_cfg.get("embed_type") or embed_cfg.get("type", DEFAULT_EMBED_TYPE)
     embed_provider = fw_cfg.get("embed_provider") or embed_cfg.get("provider", DEFAULT_EMBED_PROVIDER)
     embed_model = fw_cfg.get("embed_model") or embed_cfg.get("model", "")
     embed_base_url = fw_cfg.get("embed_base_url") or embed_cfg.get("base_url")
     embed_api_key = fw_cfg.get("embed_api_key") or embed_cfg.get("api_key")
+    embed_dimensions = fw_cfg.get("embed_dimensions") or embed_cfg.get("dimensions")
+    embed_batch_size = fw_cfg.get("embed_batch_size") or embed_cfg.get("batch_size", 64)
 
     # 构建 FrameworkConfig
     framework_config = FrameworkConfig(
@@ -108,9 +112,12 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
         llm_base_url=llm_cfg.get("base_url", ""),
         llm_api_key=llm_cfg.get("api_key", ""),
         embed_model=embed_model,
+        embed_type=embed_type,
         embed_provider=embed_provider,
         embed_api_key=embed_api_key,
         embed_base_url=embed_base_url,
+        embed_dimensions=embed_dimensions,
+        embed_batch_size=embed_batch_size,
         top_k=retrieval_cfg.get("top_k", DEFAULT_TOP_K),
         max_concurrency=fw_cfg.get("max_concurrency", DEFAULT_MAX_CONCURRENCY),
         extra={
@@ -130,7 +137,6 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
             "spacy_model": fw_cfg.get("spacy_model", "en_core_web_trf"),
             "max_workers": fw_cfg.get("max_workers", 8),
             # Fast-GraphRAG 参数
-            "embed_provider": fw_cfg.get("embed_provider", "api"),
             "domain": fw_cfg.get("domain", ""),
             "entity_types": fw_cfg.get("entity_types", []),
             "example_queries": fw_cfg.get("example_queries", []),
@@ -230,7 +236,8 @@ def _print_config(
     logger.info(f"  base_url: {llm_cfg.get('base_url')}")
 
     # Embedding
-    logger.info(f"  provider: {fw_cfg.get('embed_provider') or embed_cfg.get('provider', 'api')}")
+    logger.info(f"  type: {fw_cfg.get('embed_type') or embed_cfg.get('type', 'api')}")
+    logger.info(f"  provider: {fw_cfg.get('embed_provider') or embed_cfg.get('provider', 'zhipu')}")
     logger.info(f"  model: {fw_cfg.get('embed_model') or embed_cfg.get('model')}")
     logger.info(f"  base_url: {fw_cfg.get('embed_base_url') or embed_cfg.get('base_url')}")
 
@@ -268,9 +275,10 @@ def _print_config(
         logger.info(f"  max_workers: {fw_cfg.get('max_workers', 8)}")
     elif framework == "fast-graphrag":
         logger.info(f"  mode: {fw_cfg.get('mode', 'API')}")
-        logger.info(f"  embed_provider: {fw_cfg.get('embed_provider', 'api')}")
+        logger.info(f"  embed_type: {fw_cfg.get('embed_type', 'api')}")
     elif framework == "hipporag2":
         logger.info(f"  mode: {fw_cfg.get('mode', 'API')}")
+        logger.info(f"  embed_type: {fw_cfg.get('embed_type', 'local')}")
         logger.info(f"  embed_model_path: {fw_cfg.get('embed_model_path', embed_cfg.get('model'))}")
         logger.info(f"  chunk_token_size: {fw_cfg.get('chunk_token_size', 256)}")
         logger.info(f"  chunk_overlap: {fw_cfg.get('chunk_overlap', 32)}")

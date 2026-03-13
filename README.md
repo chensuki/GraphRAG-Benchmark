@@ -16,8 +16,7 @@
   <p>
   <a href="#getting-started" style="text-decoration: none; font-weight: bold;">🔧Getting Started</a> •
     <a href="#contribution--contact" style="text-decoration: none; font-weight: bold;">📬Contact</a> •
-    <a href="#citation" style="text-decoration: none; font-weight: bold;">📝Citation</a> •
-    <a href="#stars" style="text-decoration: none; font-weight: bold;">✨Stars History</a>
+    <a href="#citation" style="text-decoration: none; font-weight: bold;">📝Citation</a>
   </p>
 </div>
 
@@ -56,14 +55,12 @@
 ### 🚀 快速开始
 
 ```bash
-# 复制配置文件并编辑
-cp configs/template.yaml configs/my_config.yaml
-```
+# 1. 复制配置文件（首次使用）
+cp configs/template.yaml configs/experiment.yaml
 
-```bash
-# 运行单个框架
+# 2. 运行单个框架
 python Examples/run_from_yaml.py --framework lightrag
-```
+
 # 运行所有启用的框架
 python Examples/run_from_yaml.py --framework all
 
@@ -74,20 +71,6 @@ python Examples/run_from_yaml.py --dry-run
 详细配置说明请参考 [📘 GUIDE.md](GUIDE.md) 运行指南。
 
 ---
-
-If you find this benchmark helpful, please cite our paper:
-
-```
-@article{xiang2025use,
-  title={When to use Graphs in RAG: A Comprehensive Analysis for Graph Retrieval-Augmented Generation},
-  author={Xiang, Zhishang and Wu, Chuanjie and Zhang, Qinggang and Chen, Shengyuan and Hong, Zijin and Huang, Xiao and Su, Jinsong},
-  journal={arXiv preprint arXiv:2506.05690},
-  year={2025}
-}
-```
-
-This repository is for the GraphRAG-Bench project, a comprehensive benchmark for evaluating Graph Retrieval-Augmented Generation models.
-![pipeline](./pipeline.jpg)
 
 <h2 id="news">🎉 News</h2>
 
@@ -154,37 +137,26 @@ Four difficulty levels with representative examples:
 
 <h2 id="getting-started">🔧 Getting Started</h2>
 
-First, install the necessary dependencies for GraphRAG-Bench.
+详细安装和运行说明请参考 [📘 GUIDE.md](GUIDE.md)。
+
+### 快速安装
 
 ```bash
 pip install -r requirements.txt
+pip install -e ./LightRAG  # 或其他框架
 ```
 
-## 🛠 Installation Guide
+### 支持的数据集
 
-**To prevent dependency conflicts, we strongly recommend using separate Conda environments for each framework:**
+| 数据集 | 子集名 | 说明 |
+|--------|--------|------|
+| Sample | `sample` | 样本数据集（快速测试） |
+| Medical | `medical` | 医疗领域数据集 |
+| Novel | `novel` | 小说数据集（20个语料） |
+| HotpotQA | `hotpotqa_distractor` | 多跳问答 |
+| MuSiQue | `musique` | 多跳问答数据集 |
 
-We use the installation of LightRAG as an example. For other frameworks, please refer to their respective installation instructions.
-
-```bash
-# Create and activate environment (example for LightRAG)
-conda create -n lightrag python=3.10 -y
-conda activate lightrag
-
-# Install LightRAG
-git clone https://github.com/HKUDS/LightRAG.git
-cd LightRAG
-pip install -e .
-
-```
-
-## 🚀 Running Examples
-
-We provide detailed instructions on how to use GraphRAG-Bench to evaluate each framework. 
-
-Specifically, we introduce how to perform index construction and batch inference for each framework in the `Examples` folder with instructions in the [Examples README](Examples/README.md).
-
-Note that the evaluation code is standardized across all frameworks to ensure fair comparison. Please refer to the `Evaluation` folder and the  [Evaluation README](Evaluation/README.md) for detailed instructions on the evaluation.
+更多框架和数据集说明，请查看 [Examples README](Examples/README.md) 和 [Evaluation README](Evaluation/README.md)。
 
 
 
@@ -207,6 +179,4 @@ If you find this benchmark helpful, please cite our paper:
 }
 ```
 
-<h2 id="stars">✨ Stars History</h2>
 
-[![Star History Chart](https://api.star-history.com/svg?repos=GraphRAG-Bench/GraphRAG-Benchmark&type=Date)](https://www.star-history.com/#GraphRAG-Bench/GraphRAG-Benchmark&Date)

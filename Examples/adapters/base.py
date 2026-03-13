@@ -1,7 +1,5 @@
 """
 GraphRAG 框架适配器基类
-
-定义统一的框架接口，所有 GraphRAG 框架适配器必须继承此基类。
 """
 from __future__ import annotations
 
@@ -10,11 +8,9 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 
-# ============================================================
-# 统一默认值常量
-# ============================================================
-
-DEFAULT_EMBED_PROVIDER = "api"
+# 默认值常量
+DEFAULT_EMBED_TYPE = "api"
+DEFAULT_EMBED_PROVIDER = "zhipu"
 DEFAULT_TOP_K = 5
 DEFAULT_MAX_CONCURRENCY = 5
 
@@ -26,14 +22,11 @@ class BenchmarkQueryResult:
     context: List[str] = field(default_factory=list)
 
     def get_context_list(self) -> List[str]:
-        """确保返回字符串列表"""
         if self.context is None:
             return []
         if isinstance(self.context, str):
             return [self.context] if self.context else []
-        if isinstance(self.context, list):
-            return [str(item) for item in self.context if item]
-        return []
+        return [str(item) for item in self.context if item] if isinstance(self.context, list) else []
 
 
 @dataclass
@@ -41,7 +34,13 @@ class FrameworkConfig:
     """
     框架配置
 
-    封装所有框架共享的配置项。
+    嵌入配置参数：
+    - embed_type: api | local
+    - embed_provider: zhipu | openai | custom
+    - embed_model: 模型名称
+    - embed_base_url: API 地址
+    - embed_dimensions: 向量维度（None=API默认）
+    - embed_batch_size: 批处理大小
     """
     # LLM 配置
     llm_model: str = ""
@@ -50,9 +49,12 @@ class FrameworkConfig:
 
     # 嵌入配置
     embed_model: str = ""
+    embed_type: str = DEFAULT_EMBED_TYPE
     embed_provider: str = DEFAULT_EMBED_PROVIDER
     embed_api_key: Optional[str] = None
     embed_base_url: Optional[str] = None
+    embed_dimensions: Optional[int] = None  # None = API 默认
+    embed_batch_size: int = 64
 
     # 检索配置
     top_k: int = DEFAULT_TOP_K
@@ -64,20 +66,19 @@ class FrameworkConfig:
     extra: Dict[str, Any] = field(default_factory=dict)
 
     def get_extra(self, key: str, default: Any = None) -> Any:
-        """获取额外配置项"""
         return self.extra.get(key, default)
+
+    def get_effective_embed_base_url(self) -> str:
+        """获取有效的 base_url（必须通过 YAML 配置）"""
+        if self.embed_base_url:
+            return self.embed_base_url
+        if self.embed_type == "local":
+            return ""
+        raise ValueError(f"embed_base_url is required for provider={self.embed_provider}")
 
 
 class BaseFrameworkAdapter(ABC):
-    """
-    框架适配器抽象基类
-
-    生命周期：
-    1. __init__(): 初始化配置
-    2. abuild_index(): 构建索引
-    3. aquery(): 执行查询
-    4. aclose(): 清理资源
-    """
+    """框架适配器抽象基类"""
 
     def __init__(self, working_dir: str, config: FrameworkConfig):
         self.working_dir = working_dir
@@ -85,39 +86,22 @@ class BaseFrameworkAdapter(ABC):
 
     @abstractmethod
     async def abuild_index(self, content: str, **kwargs) -> None:
-        """构建索引"""
         pass
 
     @abstractmethod
     async def aquery(self, question: str, top_k: int = 5, **kwargs) -> BenchmarkQueryResult:
-        """执行查询"""
         pass
 
     async def aclose(self) -> None:
-        """清理资源"""
         pass
 
-    async def abatch_query(
-        self,
-        questions: List[Dict[str, Any]],
-        top_k: int = 5,
-        **kwargs
-    ) -> List[BenchmarkQueryResult]:
-        '''批量查询（默认实现：循环调用 aquery）'''
-        results = []
-        for q in questions:
-            result = await self.aquery(q["question"], top_k=top_k, **kwargs)
-            results.append(result)
-        return results
+    async def abatch_query(self, questions: List[Dict[str, Any]], top_k: int = 5, **kwargs) -> List[BenchmarkQueryResult]:
+        return [await self.aquery(q["question"], top_k=top_k, **kwargs) for q in questions]
 
     def load_index(self, corpus_name: str) -> None:
-        """加载已有索引"""
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not support loading index."
-        )
+        raise NotImplementedError(f"{self.__class__.__name__} does not support loading index.")
 
     def _ensure_content_string(self, content: Any) -> str:
-        """确保内容是字符串"""
         if content is None:
             raise ValueError("Content cannot be None")
         if isinstance(content, str):

@@ -73,13 +73,16 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
         project_root = Path(__file__).parent.parent.parent
         clearrag_dir = project_root / "clearrag"
 
+        # 获取有效的 embedding base_url
+        effective_embed_base_url = self.config.get_effective_embed_base_url()
+
         return ClearRAGBenchmarkAdapter(
             working_dir=self.working_dir,
             llm_model_name=self.config.llm_model,
             embedding_model_name=self.config.embed_model,
             llm_base_url=self.config.llm_base_url,
             llm_api_key=self.config.llm_api_key,
-            embed_base_url=self.config.embed_base_url,
+            embed_base_url=effective_embed_base_url,
             embed_api_key=self.config.embed_api_key,
             neo4j_uri=self._neo4j_uri,
             neo4j_user=self._neo4j_user,
