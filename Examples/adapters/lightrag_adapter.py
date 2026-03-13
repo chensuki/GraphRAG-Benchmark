@@ -62,13 +62,13 @@ class LightRAGAdapter(BaseFrameworkAdapter):
                 from lightrag.llm.zhipu import zhipu_embedding
                 return EmbeddingFunc(
                     embedding_dim=dimensions or 1024, max_token_size=8192,
-                    func=lambda texts: zhipu_embedding(texts, model=model, api_key=api_key)
+                    func=lambda texts: zhipu_embedding(texts, model=model, api_key=api_key, embedding_dim=dimensions)
                 )
             # 其他 provider 使用 OpenAI 兼容接口
             from lightrag.llm.openai import openai_embed
             return EmbeddingFunc(
                 embedding_dim=dimensions or 1024, max_token_size=8192,
-                func=lambda texts: openai_embed(texts, model=model, base_url=base_url, api_key=api_key)
+                func=lambda texts: openai_embed(texts, model=model, base_url=base_url, api_key=api_key, embedding_dim=dimensions)
             )
 
         from lightrag.llm.ollama import ollama_embed
@@ -146,61 +146,69 @@ class LightRAGAdapter(BaseFrameworkAdapter):
         )
 
         try:
-            result = await self._rag.aquery(question, param=query_param, system_prompt=SYSTEM_PROMPT)
-            return BenchmarkQueryResult(
-                answer=str(result) if result else "",
-                context=await self._extract_context(question, query_param)
-            )
+            # 使用 aquery_llm 一次性获取答案和结构化数据
+            result = await self._rag.aquery_llm(question, param=query_param, system_prompt=SYSTEM_PROMPT)
+
+            # 提取 LLM 响应
+            llm_response = result.get("llm_response", {})
+            answer = llm_response.get("content", "") if not llm_response.get("is_streaming") else ""
+
+            # 从 raw_data 提取 context
+            context = self._extract_context_from_result(result)
+
+            return BenchmarkQueryResult(answer=answer, context=context)
         except Exception as e:
             logger.error(f"Query failed: {e}")
             return BenchmarkQueryResult(answer=f"Query failed: {e}", context=[])
 
-    async def _extract_context(self, question: str, query_param) -> List[str]:
-        """从查询结果提取上下文"""
+    def _extract_context_from_result(self, result: dict) -> List[str]:
+        """从 aquery_llm 结果中提取上下文
+
+        提取顺序：
+        1. chunks.content - 原始文本片段
+        2. entities.description - 实体描述（如果 chunks 为空）
+        3. relationships.description - 关系描述（如果 chunks 为空）
+        """
         context = []
 
-        try:
-            query_data = await self._rag.aquery_data(question, param=query_param)
+        if not result:
+            return context
 
-            if not query_data or not isinstance(query_data, dict):
-                return context
+        # 检查状态
+        status = result.get("status", "unknown")
+        if status == "failure":
+            logger.warning(f"Query failed: {result.get('message', '')}")
+            return context
 
-            status = query_data.get("status", "unknown")
-            if status == "failure":
-                message = query_data.get("message", "")
-                logger.warning(f"aquery_data failed: {message}")
-                return context
+        data = result.get("data", {})
+        if not data:
+            return context
 
-            data = query_data.get("data", {})
-            if not data:
-                return context
+        # 提取 chunks (原始文本片段)
+        chunks = data.get("chunks", [])
+        if chunks:
+            for chunk in chunks:
+                if isinstance(chunk, dict) and "content" in chunk:
+                    context.append(chunk["content"])
+                elif isinstance(chunk, str):
+                    context.append(chunk)
 
-            chunks = data.get("chunks", [])
-            if chunks:
-                for chunk in chunks:
-                    if isinstance(chunk, dict) and "content" in chunk:
-                        context.append(chunk["content"])
-                    elif isinstance(chunk, str):
-                        context.append(chunk)
+        # 如果 chunks 为空，回退到 entities 和 relationships
+        if not context:
+            entities = data.get("entities", [])
+            relationships = data.get("relationships", [])
 
-            if not context:
-                entities = data.get("entities", [])
-                relationships = data.get("relationships", [])
+            for entity in entities:
+                if isinstance(entity, dict):
+                    desc = entity.get("description", "")
+                    if desc:
+                        context.append(desc)
 
-                for entity in entities:
-                    if isinstance(entity, dict):
-                        desc = entity.get("description", "")
-                        if desc:
-                            context.append(desc)
-
-                for rel in relationships:
-                    if isinstance(rel, dict):
-                        desc = rel.get("description", "")
-                        if desc:
-                            context.append(desc)
-
-        except Exception as e:
-            logger.warning(f"Failed to extract context: {e}")
+            for rel in relationships:
+                if isinstance(rel, dict):
+                    desc = rel.get("description", "")
+                    if desc:
+                        context.append(desc)
 
         return context
 
