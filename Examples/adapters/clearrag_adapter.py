@@ -11,7 +11,13 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .base import BaseFrameworkAdapter, BenchmarkQueryResult, FrameworkConfig
+from .base import (
+    BaseFrameworkAdapter,
+    BenchmarkQueryResult,
+    FrameworkConfig,
+    format_entity_content,
+    format_relationship_content,
+)
 from .registry import register_adapter
 
 logger = logging.getLogger(__name__)
@@ -116,10 +122,64 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
 
         result = await self._adapter.aquery(question=question, top_k=top_k)
 
+        context = self._build_unified_context(result)
+
         return BenchmarkQueryResult(
             answer=result.answer,
-            context=result.get_context_list()
+            context=context
         )
+
+    def _build_unified_context(self, result: Any) -> List[Dict[str, Any]]:
+        """构建统一格式的 context"""
+        context = []
+
+        if hasattr(result, 'passages') and result.passages:
+            for passage in result.passages:
+                if isinstance(passage, dict):
+                    text = passage.get("content", "") or passage.get("text", "")
+                    if text:
+                        context.append({"type": "chunk", "content": text})
+                elif isinstance(passage, str) and passage:
+                    context.append({"type": "chunk", "content": passage})
+
+        if hasattr(result, 'nodes') and result.nodes:
+            for node in result.nodes:
+                if isinstance(node, dict):
+                    name = node.get("name", "")
+                    desc = node.get("description", "")
+                    entity_type = node.get("entity_type", node.get("type", ""))
+                    content = format_entity_content(name, entity_type, desc)
+                    if content:
+                        context.append({
+                            "type": "entity",
+                            "content": content,
+                            "name": name,
+                            "entity_type": entity_type,
+                            "description": desc
+                        })
+
+        if hasattr(result, 'relationships') and result.relationships:
+            for rel in result.relationships:
+                if isinstance(rel, dict):
+                    source = rel.get("source_name", "") or rel.get("source", {}).get("name", "")
+                    target = rel.get("target_name", "") or rel.get("target", {}).get("name", "")
+                    desc = rel.get("description", "")
+                    content = format_relationship_content(source, target, desc)
+                    if content:
+                        context.append({
+                            "type": "relationship",
+                            "content": content,
+                            "source_name": source,
+                            "target_name": target,
+                            "description": desc
+                        })
+
+        if not context and hasattr(result, 'context') and result.context:
+            for ctx in result.context:
+                if isinstance(ctx, str) and ctx:
+                    context.append({"type": "chunk", "content": ctx})
+
+        return context
 
     async def aclose(self) -> None:
         """清理资源"""

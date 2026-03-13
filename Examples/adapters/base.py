@@ -15,18 +15,54 @@ DEFAULT_TOP_K = 5
 DEFAULT_MAX_CONCURRENCY = 5
 
 
+def format_entity_content(name: str, entity_type: str, description: str) -> str:
+    """格式化实体 content: "实体名 (类型): 描述"""
+    if not name and not description:
+        return ""
+
+    parts = []
+    if name:
+        parts.append(f"{name} ({entity_type})" if entity_type else name)
+    if description:
+        parts.append(description)
+
+    return ": ".join(parts)
+
+
+def format_relationship_content(src: str, tgt: str, description: str) -> str:
+    """格式化关系 content: "src->tgt: description"""
+    if not src or not tgt:
+        return ""
+    return f"{src}->{tgt}: {description}" if description else f"{src}->{tgt}"
+
+
 @dataclass
 class BenchmarkQueryResult:
     """标准查询结果"""
     answer: str
-    context: List[str] = field(default_factory=list)
+    context: List[Dict[str, Any]] = field(default_factory=list)
 
     def get_context_list(self) -> List[str]:
-        if self.context is None:
+        """获取纯文本 context 列表"""
+        if not self.context:
             return []
-        if isinstance(self.context, str):
-            return [self.context] if self.context else []
-        return [str(item) for item in self.context if item] if isinstance(self.context, list) else []
+        result = []
+        for item in self.context:
+            if isinstance(item, dict):
+                result.append(item.get("content", ""))
+        return [r for r in result if r]
+
+    def get_chunks(self) -> List[Dict[str, Any]]:
+        """获取所有 chunk 类型的 context"""
+        return [item for item in self.context if isinstance(item, dict) and item.get("type") == "chunk"]
+
+    def get_entities(self) -> List[Dict[str, Any]]:
+        """获取所有 entity 类型的 context"""
+        return [item for item in self.context if isinstance(item, dict) and item.get("type") == "entity"]
+
+    def get_relationships(self) -> List[Dict[str, Any]]:
+        """获取所有 relationship 类型的 context"""
+        return [item for item in self.context if isinstance(item, dict) and item.get("type") == "relationship"]
 
 
 @dataclass

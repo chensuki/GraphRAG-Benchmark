@@ -125,7 +125,8 @@ class LinearRAGAdapter(BaseFrameworkAdapter):
             for r in results
         ]
 
-    def _normalize_context(self, raw_context: List[str]) -> List[str]:
+    def _normalize_context(self, raw_context: List[str]) -> List[Dict[str, Any]]:
+        """构建统一格式的 context"""
         seen = set()
         result = []
         for ctx in raw_context:
@@ -133,7 +134,7 @@ class LinearRAGAdapter(BaseFrameworkAdapter):
                 ctx = ":".join(ctx.split(":")[1:]).strip()
             if ctx and ctx not in seen:
                 seen.add(ctx)
-                result.append(ctx)
+                result.append({"type": "chunk", "content": ctx})
         return result
 
     def load_index(self, corpus_name: str) -> None:

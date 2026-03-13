@@ -179,11 +179,11 @@ class HippoRAG2Adapter(BaseFrameworkAdapter):
 
             answer = solution.get("answer", "")
 
-            # 提取上下文
+            # 提取上下文（统一格式）
             context = []
             docs = solution.get("docs", [])
             if docs:
-                context = self._ensure_context_list(docs)
+                context = self._build_unified_context(docs)
 
             return BenchmarkQueryResult(answer=answer, context=context)
 
@@ -191,15 +191,27 @@ class HippoRAG2Adapter(BaseFrameworkAdapter):
             logger.error(f"Query failed: {e}")
             return BenchmarkQueryResult(answer=f"Query failed: {e}", context=[])
 
-    def _ensure_context_list(self, context: Any) -> List[str]:
-        """确保 context 是字符串列表"""
+    def _build_unified_context(self, context: Any) -> List[Dict[str, Any]]:
+        """构建统一格式的 context"""
         if context is None:
             return []
         if isinstance(context, str):
-            return [context] if context else []
+            return [{"type": "chunk", "content": context}] if context else []
         if isinstance(context, list):
-            return [str(item) if not isinstance(item, str) else item for item in context]
-        return [str(context)]
+            result = []
+            for item in context:
+                if isinstance(item, str) and item:
+                    result.append({"type": "chunk", "content": item})
+                elif isinstance(item, dict):
+                    # 如果已经是字典格式，检查是否有 type 字段
+                    if "type" in item:
+                        result.append(item)
+                    else:
+                        content = item.get("content", "") or item.get("text", "")
+                        if content:
+                            result.append({"type": "chunk", "content": content})
+            return result
+        return [{"type": "chunk", "content": str(context)}]
 
     async def abatch_query(self, questions: List[str], top_k: int = 5, **kwargs) -> List[BenchmarkQueryResult]:
         """批量查询（HippoRAG 原生支持，效率更高）"""
@@ -226,7 +238,7 @@ class HippoRAG2Adapter(BaseFrameworkAdapter):
                 if solution:
                     answer = solution.get("answer", "")
                     docs = solution.get("docs", [])
-                    context = self._ensure_context_list(docs)
+                    context = self._build_unified_context(docs)
                     results.append(BenchmarkQueryResult(answer=answer, context=context))
                 else:
                     results.append(BenchmarkQueryResult(answer="No solution found", context=[]))

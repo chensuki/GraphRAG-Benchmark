@@ -187,7 +187,7 @@ class FrameworkRunner:
                 result_dict = dict(q)
                 result_dict.update({
                     "source": corpus_name,
-                    "context": result.get_context_list(),
+                    "context": result.context,
                     "generated_answer": result.answer,
                     "ground_truth": q.get("answer", "")
                 })

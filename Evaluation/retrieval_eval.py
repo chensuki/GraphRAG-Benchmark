@@ -264,14 +264,21 @@ async def main(args: argparse.Namespace):
                 evidence_list = []
             evidences.append(evidence_list)
         
-        # Ensure contexts is a list of lists
+        # Ensure contexts is a list of strings (extract from unified format if needed)
         contexts = []
         for item in group_items:
             context = item.get('context', [])
             if isinstance(context, str):
                 context_list = [context] if context else []
             elif isinstance(context, list):
-                context_list = context
+                # 统一格式：[{"type": "chunk", "content": "..."}, ...]
+                context_list = []
+                for ctx_item in context:
+                    if isinstance(ctx_item, dict):
+                        # 统一取 content 字段
+                        context_list.append(ctx_item.get("content", ""))
+                    elif isinstance(ctx_item, str):
+                        context_list.append(ctx_item)
             else:
                 context_list = []
             contexts.append(context_list)

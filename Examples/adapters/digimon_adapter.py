@@ -39,16 +39,6 @@ class DigimonAdapter(BaseFrameworkAdapter):
         self._config_path = config.get_extra("config_path", "./config.yml")
         self._mode = config.get_extra("mode", "config")
 
-    def _ensure_context_list(self, context: Any) -> List[str]:
-        """确保 context 是字符串列表"""
-        if context is None:
-            return []
-        if isinstance(context, str):
-            return [context] if context else []
-        if isinstance(context, list):
-            return [str(item) if not isinstance(item, str) else item for item in context]
-        return [str(context)]
-
     async def _init_rag(self, corpus_name: str = "default") -> None:
         """初始化 GraphRAG 实例"""
         if self._rag is not None:
@@ -132,7 +122,7 @@ class DigimonAdapter(BaseFrameworkAdapter):
         try:
             response, context = await self._rag.query(question)
 
-            context_list = self._ensure_context_list(context)
+            context_list = self._build_unified_context(context)
 
             return BenchmarkQueryResult(
                 answer=response if response else "",
@@ -143,6 +133,29 @@ class DigimonAdapter(BaseFrameworkAdapter):
             error_msg = f"{type(e).__name__}: {e}" if str(e) else type(e).__name__
             logger.error(f"Query failed: {error_msg}")
             return BenchmarkQueryResult(answer=f"Query failed: {error_msg}", context=[])
+
+    def _build_unified_context(self, context: Any) -> List[Dict[str, Any]]:
+        """构建统一格式的 context"""
+        if context is None:
+            return []
+        if isinstance(context, str):
+            return [{"type": "chunk", "content": context}] if context else []
+        if isinstance(context, list):
+            result = []
+            for item in context:
+                if isinstance(item, str) and item:
+                    result.append({"type": "chunk", "content": item})
+                elif isinstance(item, dict):
+                    # 如果已经是字典格式，检查是否有 type 字段
+                    if "type" in item:
+                        result.append(item)
+                    else:
+                        # 尝试提取内容
+                        content = item.get("content", "") or item.get("text", "")
+                        if content:
+                            result.append({"type": "chunk", "content": content})
+            return result
+        return [{"type": "chunk", "content": str(context)}]
 
     async def abatch_query(self, questions: List[str], top_k: int = 5, **kwargs) -> List[BenchmarkQueryResult]:
         """批量查询"""

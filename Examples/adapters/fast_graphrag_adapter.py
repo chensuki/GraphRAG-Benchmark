@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -128,7 +128,12 @@ class FastGraphRAGAdapter(BaseFrameworkAdapter):
             context = []
             try:
                 chunks = resp.to_dict().get('context', {}).get('chunks', [])
-                context = [c[0]["content"] for c in chunks if c and c[0]]
+                # 构建统一格式的 context
+                for c in chunks:
+                    if c and c[0]:
+                        content = c[0].get("content", "") if isinstance(c[0], dict) else str(c[0])
+                        if content:
+                            context.append({"type": "chunk", "content": content})
             except Exception:
                 pass
 
