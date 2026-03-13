@@ -239,7 +239,26 @@ async def main(args: argparse.Namespace):
         questions = [item['question'] for item in group_items]
         ground_truths = [item['ground_truth'] for item in group_items]
         answers = [item['generated_answer'] for item in group_items]
-        contexts = [item['context'] for item in group_items]
+
+        # Extract contexts from unified format if needed
+        contexts = []
+        for item in group_items:
+            context = item.get('context', [])
+            if isinstance(context, str):
+                context_list = [context] if context else []
+            elif isinstance(context, list):
+                context_list = []
+                for ctx_item in context:
+                    if isinstance(ctx_item, dict):
+                        # Extract content field from unified format
+                        content = ctx_item.get("content", "")
+                        if content:
+                            context_list.append(content)
+                    else:
+                        context_list.append(str(ctx_item) if ctx_item else "")
+            else:
+                context_list = []
+            contexts.append(context_list)
         
         # Create dataset
         data = {
