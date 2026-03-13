@@ -164,7 +164,7 @@ class FrameworkRunner:
             # 构建索引
             if not self.skip_build:
                 logger.info(f"Indexing: {corpus_name} ({len(context)} chars)")
-                await adapter.abuild_index(context)
+                await adapter.abuild_index(context, corpus_name=corpus_name)
                 logger.info(f"Indexed: {corpus_name}")
             else:
                 try:

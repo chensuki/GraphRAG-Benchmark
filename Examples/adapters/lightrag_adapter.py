@@ -119,7 +119,7 @@ class LightRAGAdapter(BaseFrameworkAdapter):
 
         self._rag = LightRAG(
             working_dir=self.working_dir,
-            workspace=self._corpus_name,
+            workspace="",
             llm_model_func=self._create_llm_func(),
             llm_model_name=self.config.llm_model,
             llm_model_max_async=4,

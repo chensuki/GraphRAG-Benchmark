@@ -69,7 +69,7 @@ class LinearRAGAdapter(BaseFrameworkAdapter):
         from src.utils import LLM_Model
 
         return LinearRAGConfig(
-            dataset_name=corpus_name,
+            dataset_name=".",
             embedding_model=self._create_embedding_model(),
             llm_model=LLM_Model(self.config.llm_model),
             working_dir=self.working_dir,
