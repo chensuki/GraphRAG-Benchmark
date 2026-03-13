@@ -57,10 +57,22 @@ python -m spacy download en_core_web_trf
 
 # Fast-GraphRAG（如需使用）
 pip install fast-graphrag
+# 本地 embedding 支持（可选）
+pip install transformers torch
 
 # HippoRAG2（如需使用）
 git clone https://github.com/OSU-NLP-Group/HippoRAG.git
 pip install -e ./HippoRAG
+# 下载本地 embedding 模型（必需，HippoRAG 不支持 API embedding）
+python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-large-en-v1.5')"
+
+# DigiMON（如需使用）
+git clone https://github.com/JayLZhou/GraphRAG.git
+cd GraphRAG
+conda env create -f experiment.yml -n digimon
+conda activate digimon
+# 配置 LLM：编辑 config.yaml，设置 api_type/model/api_key
+# 运行：python main.py -opt Option/Method/LightRAG.yaml -dataset_name your_dataset
 ```
 
 ---

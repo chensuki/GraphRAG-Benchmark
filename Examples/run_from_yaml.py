@@ -150,6 +150,8 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
             "neo4j_user": neo4j_cfg.get("user"),
             "neo4j_password": neo4j_cfg.get("password"),
             "neo4j_database": neo4j_cfg.get("database"),
+            # DIGIMON 参数
+            "config_path": fw_cfg.get("config_path", "./config.yml"),
         },
     )
 
@@ -272,6 +274,9 @@ def _print_config(
         logger.info(f"  embed_model_path: {fw_cfg.get('embed_model_path', embed_cfg.get('model'))}")
         logger.info(f"  chunk_token_size: {fw_cfg.get('chunk_token_size', 256)}")
         logger.info(f"  chunk_overlap: {fw_cfg.get('chunk_overlap', 32)}")
+    elif framework == "digimon":
+        logger.info(f"  mode: {fw_cfg.get('mode', 'API')}")
+        logger.info(f"  config_path: {fw_cfg.get('config_path', './config.yml')}")
 
 
 def main() -> int:
