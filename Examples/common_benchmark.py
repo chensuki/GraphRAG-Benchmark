@@ -36,7 +36,7 @@ def build_error_result(
     message_prefix: str = "Query failed",
 ) -> dict:
     """Return a benchmark-compatible error record, preserving all original fields."""
-    result = dict(question)  # 保留所有原始字段
+    result = dict(question)
     result.update({
         "source": source,
         "context": [],
@@ -55,56 +55,46 @@ def load_corpus_records(corpus_path: str) -> List[dict]:
             data = [data]
         if not isinstance(data, list):
             raise ValueError(f"Unsupported corpus JSON type: {type(data)}")
-        return [
-            {
-                "corpus_name": item.get("corpus_name", "Unknown"),
-                "context": item.get("context", ""),
-            }
-            for item in data
-        ]
+        return [dict(item) for item in data]
 
     corpus_dataset = load_dataset("parquet", data_files=corpus_path, split="train")
-    return [
-        {
-            "corpus_name": item["corpus_name"],
-            "context": item["context"],
-        }
-        for item in corpus_dataset
-    ]
+    return [dict(item) for item in corpus_dataset]
 
 
 def merge_corpus_by_name(corpus_records: List[dict]) -> List[dict]:
     """
     Merge corpus records by corpus_name.
-    
-    This is critical for multi-hop QA datasets where the corpus file contains
-    thousands of individual documents, but they all share the same corpus_name.
-    Without merging, each document would create a separate LightRAG instance
-    and try to write to the same Neo4j workspace concurrently, causing deadlocks.
-    
+
+    All documents sharing the same corpus_name are merged into a single context.
+    Deduplication is done in download_datasets.py, so we only merge here.
+
+    Each title represents a paragraph. Frameworks are responsible for chunking
+    if the paragraph is too large.
+
     Args:
-        corpus_records: List of {"corpus_name": str, "context": str} records
-        
+        corpus_records: List of {"corpus_name": str, "context": str, "title": str} records
+
     Returns:
         List of merged records, one per unique corpus_name
     """
     grouped: Dict[str, List[str]] = {}
+
     for item in corpus_records:
         name = item.get("corpus_name", "Unknown")
         context = item.get("context", "")
+        if not context:
+            continue
         if name not in grouped:
             grouped[name] = []
-        if context:  # 只添加非空 context
-            grouped[name].append(context)
-    
-    # 合并同一 corpus_name 的所有 context
+        grouped[name].append(context)
+
     return [
         {
             "corpus_name": name,
             "context": "\n\n".join(contexts),
         }
         for name, contexts in grouped.items()
-        if contexts  # 只返回有内容的记录
+        if contexts
     ]
 
 
@@ -115,11 +105,9 @@ def load_question_records(questions_path: str) -> List[dict]:
             question_data = json.load(f)
         if not isinstance(question_data, list):
             raise ValueError(f"Question data must be a list, got: {type(question_data)}")
-        # 保留所有原始字段
         return question_data
 
     questions_dataset = load_dataset("parquet", data_files=questions_path, split="train")
-    # 保留所有原始字段（转换为 dict）
     return [dict(item) for item in questions_dataset]
 
 

@@ -87,10 +87,13 @@ class LinearRAGAdapter(BaseFrameworkAdapter):
     async def abuild_index(self, content: str, **kwargs) -> None:
         from src.LinearRAG import LinearRAG
 
-        content = self._ensure_content_string(content)
         corpus_name = kwargs.get("corpus_name", "default")
+        content = self._ensure_content_string(content)
 
         passages = self._prepare_passages(content)
+        if not passages:
+            raise ValueError("No passages generated for indexing")
+
         config = self._create_config(corpus_name)
         self._rag = LinearRAG(global_config=config)
         self._rag.index(passages)

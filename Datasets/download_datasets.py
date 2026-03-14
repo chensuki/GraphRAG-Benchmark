@@ -37,7 +37,7 @@ import os
 import json
 import argparse
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional, Tuple, Set
 from dataclasses import dataclass, field
 
 import pandas as pd
@@ -136,6 +136,7 @@ DATASET_CONFIGS = {
         context_field="paragraphs",
         evidence_field="question_decomposition",
         has_nested_context=False,
+        preserve_all_original_fields=True,
     ),
 }
 
@@ -437,7 +438,8 @@ def extract_context_documents(item: Dict, config: DatasetConfig) -> Tuple[str, L
                 if text.strip():
                     documents.append({
                         "title": str(title),
-                        "text": text
+                        "text": text,
+                        "sentences": [text.strip()]  # 整个段落作为单个单元
                     })
                     all_text.append(f"[{title}]\n{text}")
 
@@ -452,12 +454,34 @@ def extract_context_documents(item: Dict, config: DatasetConfig) -> Tuple[str, L
     return "\n\n".join(all_text), documents
 
 
+
 def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -> str:
-    """提取证据文本"""
+    """
+    提取证据文本
+    
+    对于不同数据集格式：
+    - HotpotQA: 从 supporting_facts 提取支持句子
+    - MuSiQue: 从 paragraphs 中提取 is_supporting=True 的段落
+    - 其他: 从 evidence_field 提取
+    """
+    evidence_parts = []
+    
+    # 优先处理 paragraphs 格式（如 MuSiQue）
+    paragraphs = item.get("paragraphs", [])
+    if isinstance(paragraphs, list):
+        supporting = [p for p in paragraphs if p.get("is_supporting")]
+        if supporting:
+            for p in supporting:
+                text = p.get("paragraph_text", "").strip()
+                if text:
+                    evidence_parts.append(text)
+            if evidence_parts:
+                return " ".join(evidence_parts)
+    
+    # 处理 supporting_facts 格式（如 HotpotQA）
     if config.evidence_field is None:
         return ""
     evidence_data = item.get(config.evidence_field, [])
-    evidence_parts = []
 
     if isinstance(evidence_data, dict):
         titles = normalize_to_list(evidence_data.get('title', []))
@@ -478,6 +502,9 @@ def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -
                         evidence_parts.append(sentences[sent_id].strip())
 
     elif isinstance(evidence_data, list):
+        # 跳过 question_decomposition 格式（由 extract_reasoning_chain 处理）
+        if evidence_data and isinstance(evidence_data[0], dict) and "paragraph_support_idx" in evidence_data[0]:
+            return ""  # MuSiQue 格式，evidence 由 paragraphs 处理
         for ev in evidence_data:
             if isinstance(ev, dict):
                 q = ev.get("question", "")
@@ -493,21 +520,48 @@ def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -
     return " ".join(evidence_parts)
 
 
+def extract_reasoning_chain(item: Dict, config: DatasetConfig) -> str:
+    """
+    提取推理链文本（用于多跳问答数据集如 MuSiQue）
+    
+    格式: "Q: sub_question_1 A: answer_1 | Q: sub_question_2 A: answer_2"
+    """
+    decomposition = item.get("question_decomposition", [])
+    if not isinstance(decomposition, list):
+        return ""
+    
+    chain_parts = []
+    for step in decomposition:
+        if isinstance(step, dict):
+            q = step.get("question", "")
+            a = step.get("answer", "")
+            if q and a:
+                chain_parts.append(f"Q: {q} A: {a}")
+    
+    return " | ".join(chain_parts)
+
+
 def process_item(
     item: Dict,
     config: DatasetConfig,
     idx: int
-) -> Tuple[Dict, Dict, Dict]:
+) -> Tuple[List[Dict], Dict, Dict]:
     """
     处理单个数据项
 
-    返回: (语料库项, 问题项-评估格式, 问题项-原始格式)
+    返回: (语料库项列表, 问题项-评估格式, 问题项-原始格式)
+
+    对于多文档数据集（如 HotpotQA），一个问题对应多个文档，
+    每个文档独立输出，便于后续按 title 去重。
     """
     # 提取上下文和文档（用于语料库）
     context_text, documents = extract_context_documents(item, config)
 
     # 提取证据（用于评估）
     evidence_text = extract_evidence(item, config, documents)
+    
+    # 提取推理链（用于多跳问答数据集）
+    reasoning_chain = extract_reasoning_chain(item, config)
 
     # 提取标准字段
     question_id = str(item.get(config.id_field, f"{config.name}-{idx}"))
@@ -528,12 +582,28 @@ def process_item(
     if has_raw_type:
         question_type = str(item.get("type", config.question_type_default))
 
-    # 构建语料库项
-    corpus_item = {
-        "corpus_name": corpus_name,
-        "context": context_text,
-        "documents": documents,
-    }
+    # 构建语料库项：每个文档独立输出，保留原始句子用于后续合并
+    corpus_items: List[Dict[str, Any]] = []
+    for doc in documents:
+        title = str(doc.get("title", "")).strip()
+        text = str(doc.get("text", "")).strip()
+        sentences = doc.get("sentences", [])  # 原始句子列表
+        if not text:
+            continue
+        context = f"[{title}]\n{text}" if title else text
+        corpus_items.append({
+            "corpus_name": corpus_name,
+            "title": title,
+            "context": context,
+            "sentences": sentences,  # 用于合并同标题内容
+        })
+
+    # 如果没有文档但有 context_text（如 ultradomain），输出单个语料库项
+    if not corpus_items and context_text.strip():
+        corpus_items.append({
+            "corpus_name": corpus_name,
+            "context": context_text,
+        })
 
     # 构建评估格式问题项
     question_eval = {
@@ -544,6 +614,10 @@ def process_item(
         "evidence": evidence_text,
         "question_type": question_type,
     }
+    
+    # 添加推理链字段（如果有）
+    if reasoning_chain:
+        question_eval["reasoning_chain"] = reasoning_chain
 
     # 保留额外字段（不覆盖已存在的评估字段）
     for field in config.extra_standard_fields:
@@ -559,7 +633,7 @@ def process_item(
     else:
         question_original = {}
 
-    return corpus_item, question_eval, question_original
+    return corpus_items, question_eval, question_original
 
 
 def convert_dataset(
@@ -588,7 +662,9 @@ def convert_dataset(
     corpus_list = []
     questions_eval = []
     questions_original = []
-    seen_corpus = set()
+
+    # 用于合并同标题内容：(corpus_name, title) -> set of sentences
+    title_to_sentences: Dict[Tuple[str, str], Set[str]] = {}
 
     for i in range(process_count):
         if (i + 1) % 1000 == 0:
@@ -603,15 +679,27 @@ def convert_dataset(
             continue
 
         try:
-            corpus_item, q_eval, q_orig = process_item(item, config, i)
+            corpus_items, q_eval, q_orig = process_item(item, config, i)
 
-            if config.per_question_corpus:
-                corpus_list.append(corpus_item)
-            else:
-                corpus_hash = hash(corpus_item["context"][:500])
-                if corpus_hash not in seen_corpus:
-                    seen_corpus.add(corpus_hash)
+            for corpus_item in corpus_items:
+                if config.per_question_corpus:
                     corpus_list.append(corpus_item)
+                    continue
+
+                # 合并同标题内容：收集所有原始句子
+                title = corpus_item.get("title", "")
+                corpus_name = corpus_item.get("corpus_name", "")
+                dedupe_key = (corpus_name, title)
+
+                # 使用原始句子列表（如果有），避免重新解析
+                sentences = corpus_item.get("sentences", [])
+                if dedupe_key not in title_to_sentences:
+                    title_to_sentences[dedupe_key] = set()
+                # 将句子转为字符串并存入集合（自动去重）
+                for sent in sentences:
+                    sent_str = str(sent).strip()
+                    if sent_str:
+                        title_to_sentences[dedupe_key].add(sent_str)
 
             questions_eval.append(q_eval)
             questions_original.append(q_orig)
@@ -619,6 +707,18 @@ def convert_dataset(
         except Exception as e:
             print(f"   [WARN] 跳过第 {i} 条: {str(e)[:50]}")
             continue
+
+    # 从合并后的句子生成语料库
+    for (corpus_name, title), sentences in title_to_sentences.items():
+        if sentences:
+            # 将句子按字典序排序后用空格连接（保持一致性）
+            text = " ".join(sorted(sentences))
+            context = f"[{title}]\n{text}"
+            corpus_list.append({
+                "corpus_name": corpus_name,
+                "title": title,
+                "context": context,
+            })
 
     print(f"   [OK] 转换完成: {len(corpus_list)} 个文档, {len(questions_eval)} 个问题")
 
@@ -648,15 +748,10 @@ def save_dataset(
     corpus_parquet = corpus_dir / f"{dataset_name}.parquet"
     corpus_json = corpus_dir / f"{dataset_name}.json"
 
-    corpus_simple = [
-        {"corpus_name": item["corpus_name"], "context": item["context"]}
-        for item in corpus_list
-    ]
-
-    corpus_df = pd.DataFrame(corpus_simple)
+    corpus_df = pd.DataFrame(corpus_list)
     corpus_df.to_parquet(corpus_parquet, index=False)
     with open(corpus_json, 'w', encoding='utf-8') as f:
-        json.dump(corpus_simple, f, indent=2, ensure_ascii=False)
+        json.dump(corpus_list, f, indent=2, ensure_ascii=False)
 
     print(f"\n[OK] 语料库已保存:")
     print(f"   Parquet: {corpus_parquet}")
