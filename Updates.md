@@ -33,3 +33,5 @@
 [2026-03-05 22:16:54] 更新运行.md：在 LinearRAG 章节新增依赖安装说明（linearrag requirements + SpaCy en_core_web_trf 模型）。
 [2026-03-06 11:06:00] 修复 LinearRAG 结果 context 重复：在 Examples/run_linearrag.py 的 benchmark 输出阶段新增 normalize_context_list，去除 passage 编号前缀后按正文保序去重，不修改 LinearRAG 核心检索逻辑。
 [2026-03-10 16:30:00] 修复 Datasets/download_datasets.py 的 2Wiki 转换：questions_full 改为直接保存原始规范 schema（不再包 _original）；2Wiki 标准问题输出额外保留 type/evidences/supporting_facts/context；并改为每题独立语料（source/corpus_name=id），避免整套数据共享同一 source 导致 benchmark 对齐错误。
+[2026-03-13 10:35:00] 新增公平评估方案文档 docs/plans/2026-03-13-fair-evaluation-design.md：明确当前 JSON 下可严格评估的主指标（success_rate、empty_context_rate、answer_em、answer_f1、rouge_score、context_relevancy、evidence_recall、faithfulness），并区分弱近似指标与后续需要统一 retrieval schema 才能严格评估的指标。
+[2026-03-13 23:30:58] 重构 Evaluation/unified_eval.py 为统一公平评估入口：新增 success/failure/empty_context/eligible coverage 指标，区分成功样本质量分与全样本质量分，并按 question_type 输出分组结果；同步收敛 sf_metrics/triple_recall 的严格结构化评估口径。
