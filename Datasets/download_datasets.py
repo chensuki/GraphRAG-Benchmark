@@ -89,6 +89,7 @@ DATASET_CONFIGS = {
         description="HotpotQA Distractor: 预填充干扰文档版本",
         has_nested_context=True,
         evidence_field="supporting_facts",
+        preserve_all_original_fields=True,
         extra_standard_fields=["type", "level", "supporting_facts"],
     ),
     "hotpotqa_fullwiki": DatasetConfig(
@@ -677,14 +678,13 @@ def save_dataset(
     print(f"   问题数: {len(questions_eval)}")
     print(f"   字段: {list(questions_eval[0].keys()) if questions_eval else 'N/A'}")
 
-    # 已禁用：评估格式已通过 extra_standard_fields 包含所有必要字段
-    # 如需完整原始格式，可从原始数据集直接读取
-    # if questions_original:
-    #     original_json = questions_dir / f"{dataset_name}_questions_full.json"
-    #     with open(original_json, 'w', encoding='utf-8') as f:
-    #         json.dump(questions_original, f, indent=2, ensure_ascii=False)
-    #     print(f"\n[OK] 问题集（完整格式）已保存:")
-    #     print(f"   JSON: {original_json}")
+    # 保存原始格式问题集（如果配置了 preserve_all_original_fields）
+    if questions_original and any(questions_original):
+        original_json = questions_dir / f"{dataset_name}_questions_original.json"
+        with open(original_json, 'w', encoding='utf-8') as f:
+            json.dump(questions_original, f, indent=2, ensure_ascii=False)
+        print(f"\n[OK] 问题集（完整格式）已保存:")
+        print(f"   JSON: {original_json}")
 
     return corpus_parquet, questions_parquet
 
