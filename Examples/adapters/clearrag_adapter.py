@@ -160,6 +160,39 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
             context=context
         )
 
+    async def abatch_query(
+        self,
+        questions: List[Dict[str, Any]],
+        top_k: int = 5,
+        batch_concurrency: int = 5,
+        **kwargs
+    ) -> List[BenchmarkQueryResult]:
+        """
+        批量查询
+        """
+        if self._adapter is None:
+            raise RuntimeError("Index not built. Call abuild_index() first.")
+
+        # 提取问题文本列表
+        question_texts = [q.get("question", "") if isinstance(q, dict) else str(q) for q in questions]
+
+        # 调用批量查询
+        results = await self._adapter.abatch_query(
+            questions=question_texts,
+            top_k=top_k,
+            batch_concurrency=batch_concurrency,
+            **kwargs
+        )
+
+        # 转换为标准格式
+        return [
+            BenchmarkQueryResult(
+                answer=r.answer,
+                context=self._build_unified_context(r)
+            )
+            for r in results
+        ]
+
     def _build_unified_context(self, result: Any) -> List[Dict[str, Any]]:
         """构建统一格式的 context"""
         context = []
