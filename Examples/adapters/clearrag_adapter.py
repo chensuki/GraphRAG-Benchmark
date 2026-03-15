@@ -82,6 +82,23 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
         # 获取有效的 embedding base_url
         effective_embed_base_url = self.config.get_effective_embed_base_url()
 
+        # 切分参数
+        chunk_size = self.config.get_extra("chunk_size", 1200)
+        chunk_overlap = self.config.get_extra("chunk_overlap", 100)
+
+        # 构建参数
+        max_tool_calls = self.config.get_extra("max_tool_calls", 3)
+        max_tokens = self.config.get_extra("max_tokens", 8192)
+        similarity_threshold = self.config.get_extra("similarity_threshold", 0.95)
+
+        # 查询参数
+        vector_search_top_k = self.config.get_extra("vector_search_top_k", 100)
+        activation_threshold = self.config.get_extra("activation_threshold", 0.8)
+        passage_top_k = self.config.top_k  # 使用全局 top_k
+        max_context_length = self.config.get_extra("max_context_length", 10000)
+        max_passage_content_length = self.config.get_extra("max_passage_content_length", 2000)
+        embedding_dimensions = self.config.embed_dimensions
+
         return ClearRAGBenchmarkAdapter(
             working_dir=self.working_dir,
             llm_model_name=self.config.llm_model,
@@ -100,6 +117,20 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
             max_concurrency=self.config.max_concurrency,
             enable_checkpoint=True,
             skill_registry_path=str(clearrag_dir / "clearrag" / "skills"),
+            # 切分参数
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            # 构建参数
+            max_tool_calls=max_tool_calls,
+            max_tokens=max_tokens,
+            similarity_threshold=similarity_threshold,
+            # 查询参数
+            vector_search_top_k=vector_search_top_k,
+            activation_threshold=activation_threshold,
+            passage_top_k=passage_top_k,
+            max_context_length=max_context_length,
+            max_passage_content_length=max_passage_content_length,
+            embedding_dimensions=embedding_dimensions,
         )
 
     async def abuild_index(self, content: str, **kwargs) -> None:

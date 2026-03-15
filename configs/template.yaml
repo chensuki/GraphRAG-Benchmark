@@ -68,6 +68,18 @@ frameworks:
     fast: false                             # 快速模式（禁用 Reflexion）
     max_concurrency: 5                      # 构建并发数
     corpus_concurrency: 2                   # 语料库并发数
+    # 切分参数
+    chunk_size: 1200                        # 分块大小（tokens）
+    chunk_overlap: 100                      # 分块重叠（tokens）
+    # 构建参数
+    max_tool_calls: 3                       # Agent 工具调用上限
+    max_tokens: 8192                        # LLM 输出 token 上限
+    similarity_threshold: 0.95              # 实体去重相似度阈值
+    # 查询参数
+    vector_search_top_k: 100                # 向量搜索召回数量
+    activation_threshold: 0.8               # 向量激活阈值
+    max_context_length: 10000               # 上下文最大字符数
+    max_passage_content_length: 2000        # 单段落最大字符数
     skip_build: false
 
   linearrag:
@@ -83,6 +95,8 @@ frameworks:
     max_workers: 8                    # NER 并发数
     corpus_concurrency: 1             # 语料库并发数
     skip_build: false
+    chunk_token_size: 1200            # 分块大小
+    chunk_overlap_token_size: 100     # 分块重叠
 
   fast-graphrag:
     enabled: true

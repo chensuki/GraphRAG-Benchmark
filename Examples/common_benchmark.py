@@ -65,28 +65,27 @@ def merge_corpus_by_name(corpus_records: List[dict]) -> List[dict]:
     """
     Merge corpus records by corpus_name.
 
-    All documents sharing the same corpus_name are merged into a single context.
-    Deduplication is done in download_datasets.py, so we only merge here.
-
-    Each title represents a paragraph. Frameworks are responsible for chunking
-    if the paragraph is too large.
+    All documents sharing the same corpus_name are grouped together.
+    Context is simply concatenated with double newlines.
 
     Args:
         corpus_records: List of {"corpus_name": str, "context": str, "title": str} records
 
     Returns:
-        List of merged records, one per unique corpus_name
+        List of merged records, one per unique corpus_name:
+        [{"corpus_name": str, "context": str}]
     """
     grouped: Dict[str, List[str]] = {}
 
     for item in corpus_records:
         name = item.get("corpus_name", "Unknown")
         context = item.get("context", "")
-        if not context:
-            continue
+
         if name not in grouped:
             grouped[name] = []
-        grouped[name].append(context)
+
+        if context:
+            grouped[name].append(context)
 
     return [
         {
