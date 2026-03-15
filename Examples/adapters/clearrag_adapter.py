@@ -98,6 +98,7 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
         max_context_length = self.config.get_extra("max_context_length", 10000)
         max_passage_content_length = self.config.get_extra("max_passage_content_length", 2000)
         embedding_dimensions = self.config.embed_dimensions
+        embedding_mode = self.config.embed_type if self.config.embed_type in ("api", "local") else "api"
 
         return ClearRAGBenchmarkAdapter(
             working_dir=self.working_dir,
@@ -131,6 +132,7 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
             max_context_length=max_context_length,
             max_passage_content_length=max_passage_content_length,
             embedding_dimensions=embedding_dimensions,
+            embedding_mode=embedding_mode,
         )
 
     async def abuild_index(self, content: str, **kwargs) -> None:
