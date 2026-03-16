@@ -520,6 +520,19 @@ def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -
     return " ".join(evidence_parts)
 
 
+def extract_question_type_from_id(item: Dict, config: DatasetConfig) -> str:
+    """从 ID 中提取问题类型（用于 MuSiQue 等数据集）"""
+    import re
+    item_id = str(item.get(config.id_field, ""))
+
+    # 匹配模式：数字 + hop
+    match = re.match(r'^(\d+)hop', item_id, re.IGNORECASE)
+    if match:
+        return f"{match.group(1)}hop"
+
+    return config.question_type_default
+
+
 def extract_reasoning_steps(item: Dict) -> List[Dict]:
     """
     提取结构化推理步骤（用于多跳问答数据集如 MuSiQue）
@@ -638,6 +651,9 @@ def process_item(
     has_raw_type = "type" in item
     if has_raw_type:
         question_type = str(item.get("type", config.question_type_default))
+    elif config.name == "musique":
+        # MuSiQue 数据集：从 ID 中解析 hop 类型
+        question_type = extract_question_type_from_id(item, config)
 
     # 构建语料库项：每个文档独立输出，保留原始句子用于后续合并
     corpus_items: List[Dict[str, Any]] = []

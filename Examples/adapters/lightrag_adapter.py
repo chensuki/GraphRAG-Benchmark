@@ -117,6 +117,9 @@ class LightRAGAdapter(BaseFrameworkAdapter):
         from lightrag import LightRAG
         from lightrag.kg.shared_storage import initialize_pipeline_status
 
+        # 获取超时配置（默认 300 秒）
+        llm_timeout = self.config.get_extra("llm_timeout", 300)
+
         self._rag = LightRAG(
             working_dir=self.working_dir,
             workspace="",
@@ -126,10 +129,12 @@ class LightRAGAdapter(BaseFrameworkAdapter):
             chunk_token_size=self.config.get_extra("chunk_token_size", 1200),
             chunk_overlap_token_size=self.config.get_extra("chunk_overlap_token_size", 100),
             embedding_func=self._create_embedding_func(),
+            default_llm_timeout=llm_timeout,
             llm_model_kwargs={
                 "model_name": self.config.llm_model,
                 "base_url": self.config.llm_base_url,
-                "api_key": self.config.llm_api_key
+                "api_key": self.config.llm_api_key,
+                "timeout": llm_timeout,
             }
         )
         await self._rag.initialize_storages()

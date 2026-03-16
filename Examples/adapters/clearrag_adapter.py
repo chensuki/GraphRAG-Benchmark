@@ -247,6 +247,12 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
 
         return context
 
+    def load_index(self, corpus_name: str) -> None:
+        """加载已有索引"""
+        self._corpus_name = corpus_name
+        self._adapter = self._create_adapter(corpus_name)
+        logger.info(f"Index loaded for {corpus_name}")
+
     async def aclose(self) -> None:
         """清理资源"""
         if self._adapter:

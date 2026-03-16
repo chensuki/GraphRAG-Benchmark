@@ -1,4 +1,11 @@
-"""统一评估脚本"""
+"""
+统一评估脚本
+
+核心原则：
+1. 公平性第一 - 使用统一的 core.py 计算函数
+2. 正确性 - 遵循 HotpotQA/MuSiQue 官方评估方法
+3. 支持多种数据集格式（HotpotQA, MuSiQue, 2WikiMultihop, Medical, Novel）
+"""
 from __future__ import annotations
 
 import argparse
@@ -12,21 +19,15 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
+# 核心评估函数（统一来源）
 from Evaluation.metrics import (
-    compute_answer_em,
-    compute_answer_f1,
-    compute_answer_accuracy,
-    compute_rouge_score,
-    compute_triple_f1,
-    compute_sf_em,
-    compute_sf_f1,
-    compute_joint_em,
-    compute_joint_f1,
-    # 多跳问答评估
-    compute_answer_scores_with_aliases,
+    compute_answer_scores,
     compute_supporting_facts_scores,
-    compute_musique_scores,
+    compute_joint_scores,
+    compute_triple_scores,
+    compute_reasoning_step_scores,
     compute_hop_stratified_scores,
+    compute_rouge_score,
 )
 
 
@@ -59,7 +60,11 @@ def extract_text_from_context(context: Any) -> str:
 
 
 def compute_evidence_coverage(context: Any, evidence: str) -> Optional[float]:
-    """计算证据覆盖度"""
+    """
+    计算证据覆盖度
+
+    评估检索上下文对证据文本的覆盖程度
+    """
     if not evidence:
         return None
     if is_empty(context):
@@ -86,90 +91,193 @@ def compute_evidence_coverage(context: Any, evidence: str) -> Optional[float]:
     return covered / len(evidence_words)
 
 
+def detect_dataset_format(item: Dict[str, Any]) -> Dict[str, bool]:
+    """
+    检测数据集格式
+
+    Returns:
+        {
+            "is_musique": 是否为 MuSiQue 格式,
+            "has_aliases": 是否有答案别名,
+            "has_sentence_sf": 是否有句子级别支持事实,
+            "has_paragraph_sf": 是否有段落级别支持事实,
+            "has_triples": 是否有三元组,
+            "has_reasoning_steps": 是否有推理步骤,
+        }
+    """
+    return {
+        "is_musique": bool(item.get("supporting_paragraph_titles")),
+        "has_aliases": bool(item.get("answer_aliases")),
+        "has_sentence_sf": bool(item.get("supporting_facts", {}).get("title")),
+        "has_paragraph_sf": bool(item.get("supporting_paragraph_titles")),
+        "has_triples": bool(item.get("evidences")),
+        "has_reasoning_steps": bool(item.get("reasoning_steps")),
+    }
+
+
+def normalize_reasoning_steps(steps: Any) -> List[Dict[str, Any]]:
+    """标准化推理步骤格式"""
+    if not steps:
+        return []
+
+    if isinstance(steps, list):
+        result = []
+        for i, step in enumerate(steps):
+            if isinstance(step, str):
+                # 字符串格式 -> 转换为字典格式
+                result.append({"step": i, "answer": step})
+            elif isinstance(step, dict):
+                # 字典格式 -> 保持不变
+                result.append(step)
+        return result
+
+    return []
+
+
 async def evaluate_sample(item: Dict[str, Any]) -> Dict[str, Any]:
-    """评估单个样本"""
+    """
+    评估单个样本
+
+    使用统一的 core.py 计算函数，确保公平性
+    """
     results = {}
 
+    # 基础统计
     results["has_answer"] = not is_empty(item.get("generated_answer"))
     results["has_context"] = not is_empty(item.get("context"))
-    results["has_retrieved_sf"] = bool(item.get("retrieved_supporting_facts"))
+    results["has_retrieved_sf"] = bool(item.get("retrieved_supporting_facts") or item.get("retrieved_supporting_titles"))
     results["has_retrieved_triples"] = bool(item.get("retrieved_triples"))
 
-    # 检测数据集类型
-    is_musique = bool(item.get("supporting_paragraph_titles"))
-    has_aliases = bool(item.get("answer_aliases"))
+    # 检测数据集格式
+    fmt = detect_dataset_format(item)
 
+    # 提取答案
     pred_answer = item.get("generated_answer", "") or ""
     gold_answer = item.get("ground_truth") or item.get("answer", "")
+    answer_aliases = item.get("answer_aliases")
 
-    # 使用多跳问答评估（支持别名和段落级别支持事实）
-    if is_musique or has_aliases:
-        # MuSiQue 格式评估
-        answer_aliases = item.get("answer_aliases")
-        gold_supporting_titles = item.get("supporting_paragraph_titles", [])
-        pred_supporting_titles = item.get("retrieved_supporting_titles", [])
-        gold_reasoning_steps = item.get("reasoning_steps", [])
-        pred_reasoning_steps = item.get("retrieved_reasoning_steps", [])
+    # ========================================
+    # 答案评估（统一使用 compute_answer_scores）
+    # ========================================
+    answer_scores = compute_answer_scores(
+        prediction=pred_answer,
+        answer=gold_answer,
+        answer_aliases=answer_aliases,
+        handle_special=True  # 统一处理 yes/no
+    )
+    results["answer_em"] = answer_scores["em"]
+    results["answer_f1"] = answer_scores["f1"]
+    results["answer_precision"] = answer_scores["precision"]
+    results["answer_recall"] = answer_scores["recall"]
 
-        musique_scores = compute_musique_scores(
-            pred_answer=pred_answer,
-            gold_answer=gold_answer,
-            answer_aliases=answer_aliases,
-            pred_supporting_titles=pred_supporting_titles if pred_supporting_titles else None,
-            gold_supporting_titles=gold_supporting_titles,
-            pred_reasoning_steps=pred_reasoning_steps if pred_reasoning_steps else None,
-            gold_reasoning_steps=gold_reasoning_steps
-        )
-        results.update(musique_scores)
-    else:
-        # 传统评估
-        results["answer_em"] = compute_answer_em(pred_answer, gold_answer)
-        results["answer_accuracy"] = compute_answer_accuracy(pred_answer, gold_answer)
-        f1, precision, recall = compute_answer_f1(pred_answer, gold_answer)
-        results["answer_f1"] = f1
-        results["answer_precision"] = precision
-        results["answer_recall"] = recall
-
+    # ROUGE 评估
     results["rouge_score"] = await compute_rouge_score(pred_answer, gold_answer)
 
-    # 检索质量
-    context = item.get("context")
-    evidence = item.get("evidence", "") or item.get("evidences_text", "")
-    if evidence:
-        results["evidence_coverage"] = compute_evidence_coverage(context, evidence)
+    # ========================================
+    # 支持事实评估
+    # ========================================
+    sf_evaluated = False
 
-    # 传统支持事实指标（HotpotQA 格式：需要 sent_id）
-    if not is_musique:
+    # 段落级别（MuSiQue 格式）
+    if fmt["has_paragraph_sf"]:
+        gold_titles = item.get("supporting_paragraph_titles", [])
+        pred_titles = item.get("retrieved_supporting_titles", [])
+
+        if gold_titles and pred_titles is not None:
+            sf_scores = compute_supporting_facts_scores(
+                pred_titles, gold_titles, level="paragraph"
+            )
+            results["sf_em"] = sf_scores["em"]
+            results["sf_f1"] = sf_scores["f1"]
+            results["sf_precision"] = sf_scores["precision"]
+            results["sf_recall"] = sf_scores["recall"]
+            sf_evaluated = True
+
+    # 句子级别（HotpotQA 格式）
+    if not sf_evaluated and fmt["has_sentence_sf"]:
         gold_sf = item.get("supporting_facts")
         pred_sf = item.get("retrieved_supporting_facts")
 
         if gold_sf and gold_sf.get("title") and pred_sf:
-            results["sf_em"] = compute_sf_em(pred_sf, gold_sf)
-            sf_f1, sf_prec, sf_rec = compute_sf_f1(pred_sf, gold_sf)
-            results["sf_f1"] = sf_f1
-            results["sf_precision"] = sf_prec
-            results["sf_recall"] = sf_rec
-            if results.get("sf_em") is not None:
-                results["joint_em"] = compute_joint_em(results["answer_em"], results["sf_em"])
-            if sf_prec is not None and sf_rec is not None:
-                jf1, jp, jr = compute_joint_f1(
-                    results.get("answer_precision", 0),
-                    results.get("answer_recall", 0),
-                    sf_prec, sf_rec
-                )
-                results["joint_f1"] = jf1
-                results["joint_precision"] = jp
-                results["joint_recall"] = jr
+            sf_scores = compute_supporting_facts_scores(
+                pred_sf, gold_sf, level="sentence"
+            )
+            results["sf_em"] = sf_scores["em"]
+            results["sf_f1"] = sf_scores["f1"]
+            results["sf_precision"] = sf_scores["precision"]
+            results["sf_recall"] = sf_scores["recall"]
+            sf_evaluated = True
 
-    # 三元组指标
+    # 如果没有支持事实数据，设置为 None
+    if not sf_evaluated:
+        results["sf_em"] = None
+        results["sf_f1"] = None
+        results["sf_precision"] = None
+        results["sf_recall"] = None
+
+    # ========================================
+    # 联合指标
+    # ========================================
+    if sf_evaluated and results["sf_em"] is not None:
+        joint = compute_joint_scores(
+            answer_em=results["answer_em"],
+            answer_f1=results["answer_f1"],
+            answer_precision=results["answer_precision"],
+            answer_recall=results["answer_recall"],
+            sf_em=results["sf_em"],
+            sf_f1=results["sf_f1"],
+            sf_precision=results["sf_precision"],
+            sf_recall=results["sf_recall"]
+        )
+        results["joint_em"] = joint["joint_em"]
+        results["joint_f1"] = joint["joint_f1"]
+        results["joint_precision"] = joint["joint_precision"]
+        results["joint_recall"] = joint["joint_recall"]
+    else:
+        results["joint_em"] = None
+        results["joint_f1"] = None
+        results["joint_precision"] = None
+        results["joint_recall"] = None
+
+    # ========================================
+    # 三元组评估
+    # ========================================
     gold_triples = item.get("evidences")
     pred_triples = item.get("retrieved_triples")
 
     if gold_triples and pred_triples:
-        triple_f1, triple_prec, triple_rec = compute_triple_f1(pred_triples, gold_triples)
-        results["triple_f1"] = triple_f1
-        results["triple_precision"] = triple_prec
-        results["triple_recall"] = triple_rec
+        triple_scores = compute_triple_scores(pred_triples, gold_triples)
+        results["triple_em"] = triple_scores["em"]
+        results["triple_f1"] = triple_scores["f1"]
+        results["triple_precision"] = triple_scores["precision"]
+        results["triple_recall"] = triple_scores["recall"]
+    else:
+        results["triple_em"] = None
+        results["triple_f1"] = None
+        results["triple_precision"] = None
+        results["triple_recall"] = None
+
+    # ========================================
+    # 推理步骤评估
+    # ========================================
+    gold_steps = normalize_reasoning_steps(item.get("reasoning_steps"))
+    pred_steps = normalize_reasoning_steps(item.get("retrieved_reasoning_steps"))
+
+    if gold_steps and pred_steps:
+        step_scores = compute_reasoning_step_scores(pred_steps, gold_steps)
+        results["step_accuracy"] = step_scores["accuracy"]
+        results["step_f1"] = step_scores["f1"]
+    else:
+        results["step_accuracy"] = None
+        results["step_f1"] = None
+
+    # ========================================
+    # 检索质量评估
+    # ========================================
+    context = item.get("context")
+    evidence = item.get("evidence", "") or item.get("evidences_text", "")
+    if evidence:
+        results["evidence_coverage"] = compute_evidence_coverage(context, evidence)
 
     return results
 
@@ -178,16 +286,21 @@ def analyze_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
     """分析数据集字段情况"""
     total = len(data)
 
-    has_gold_sf = sum(1 for item in data if item.get("supporting_facts")) / total
-    has_gold_triples = sum(1 for item in data if item.get("evidences")) / total
-    has_evidence = sum(1 for item in data if item.get("evidence")) / total
-    has_pred_sf = sum(1 for item in data if item.get("retrieved_supporting_facts")) / total
-    has_pred_triples = sum(1 for item in data if item.get("retrieved_triples")) / total
+    def count_ratio(key: str, check_func=None) -> float:
+        if check_func:
+            return sum(1 for item in data if check_func(item)) / total
+        return sum(1 for item in data if item.get(key)) / total
+
+    has_gold_sf = count_ratio("supporting_facts", lambda x: x.get("supporting_facts", {}).get("title"))
+    has_gold_triples = count_ratio("evidences")
+    has_evidence = count_ratio("evidence") + count_ratio("evidences_text")
+    has_pred_sf = count_ratio("retrieved_supporting_facts") + count_ratio("retrieved_supporting_titles")
+    has_pred_triples = count_ratio("retrieved_triples")
 
     # MuSiQue 特有字段
-    has_supporting_titles = sum(1 for item in data if item.get("supporting_paragraph_titles")) / total
-    has_answer_aliases = sum(1 for item in data if item.get("answer_aliases")) / total
-    has_reasoning_steps = sum(1 for item in data if item.get("reasoning_steps")) / total
+    has_supporting_titles = count_ratio("supporting_paragraph_titles")
+    has_answer_aliases = count_ratio("answer_aliases")
+    has_reasoning_steps = count_ratio("reasoning_steps")
 
     type_dist = defaultdict(int)
     for item in data:
@@ -204,7 +317,7 @@ def analyze_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         "pred_sf": has_pred_sf,
         "pred_triples": has_pred_triples,
         "question_types": dict(type_dist),
-        "sf_evaluable": has_gold_sf > 0 and has_pred_sf > 0,
+        "sf_evaluable": (has_gold_sf > 0 and has_pred_sf > 0) or has_supporting_titles > 0,
         "triple_evaluable": has_gold_triples > 0 and has_pred_triples > 0,
         # MuSiQue 特有
         "is_musique": is_musique,
@@ -271,8 +384,8 @@ async def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
     print(f"  框架 retrieved_triples: {analysis['pred_triples']*100:.0f}%")
     print(f"  问题类型: {list(analysis['question_types'].keys())}")
     print(f"\n  评估能力:")
-    print(f"    支持事实评估: {'可用' if analysis['sf_evaluable'] or analysis.get('is_musique') else '不可用（框架未输出 retrieved_supporting_facts/titles）'}")
-    print(f"    三元组评估: {'可用' if analysis['triple_evaluable'] else '不可用（框架未输出 retrieved_triples）'}")
+    print(f"    支持事实评估: {'可用' if analysis['sf_evaluable'] else '不可用'}")
+    print(f"    三元组评估: {'可用' if analysis['triple_evaluable'] else '不可用'}")
 
     for i, item in enumerate(data):
         try:
@@ -299,13 +412,12 @@ async def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         hop_stratified = compute_hop_stratified_scores(all_results)
 
     metrics = [
-        "answer_em", "answer_accuracy", "answer_f1", "answer_precision",
-        "answer_recall", "rouge_score", "evidence_coverage",
+        "answer_em", "answer_f1", "answer_precision", "answer_recall",
+        "rouge_score", "evidence_coverage",
         "sf_em", "sf_f1", "sf_precision", "sf_recall",
         "joint_em", "joint_f1", "joint_precision", "joint_recall",
         "triple_f1", "triple_precision", "triple_recall",
-        # MuSiQue 特有
-        "step_accuracy", "step_em", "step_f1",
+        "step_accuracy", "step_f1",
     ]
 
     avg_scores = {}
@@ -359,7 +471,7 @@ def format_report(results: Dict[str, Any]) -> str:
         f"  empty_context_rate:{f.get('empty_context_rate', 0)*100:.1f}%",
         "",
         "评估能力:",
-        f"  supporting_facts: {'可用' if a.get('sf_evaluable') or a.get('is_musique') else '不可用'}",
+        f"  supporting_facts: {'可用' if a.get('sf_evaluable') else '不可用'}",
         f"  triples:          {'可用' if a.get('triple_evaluable') else '不可用'}",
         "",
         "答案指标:",
@@ -380,10 +492,10 @@ def format_report(results: Dict[str, Any]) -> str:
         n = counts.get("evidence_coverage", 0)
         lines.append(f"  evidence_coverage: {score:.4f} (n={n})")
 
-    sf_metrics = ["sf_em", "sf_f1", "joint_em"]
+    sf_metrics = ["sf_em", "sf_f1", "joint_em", "joint_f1"]
     if any(m in results.get("average_scores", {}) for m in sf_metrics):
         lines.append("")
-        lines.append("支持事实指标:")
+        lines.append("支持事实与联合指标:")
         lines.append("-" * 40)
         for metric in sf_metrics:
             if metric in results.get("average_scores", {}):
@@ -391,11 +503,11 @@ def format_report(results: Dict[str, Any]) -> str:
                 n = counts.get(metric, 0)
                 lines.append(f"  {metric:20s}: {score:.4f} (n={n})")
 
-    # MuSiQue 推理步骤指标
-    step_metrics = ["step_accuracy", "step_em", "step_f1"]
+    # 推理步骤指标
+    step_metrics = ["step_accuracy", "step_f1"]
     if any(m in results.get("average_scores", {}) for m in step_metrics):
         lines.append("")
-        lines.append("推理步骤指标 (MuSiQue):")
+        lines.append("推理步骤指标:")
         lines.append("-" * 40)
         for metric in step_metrics:
             if metric in results.get("average_scores", {}):

@@ -1,7 +1,60 @@
-"""评估指标模块"""
+"""
+评估指标模块
+
+核心设计原则：
+1. 公平性第一 - 所有评估使用统一算法
+2. 正确性 - 遵循官方实现（HotpotQA, MuSiQue, 2WikiMultihop）
+3. 简洁性 - DRY，单一事实来源
+
+模块结构：
+- core.py: 核心计算（唯一来源）
+- llm_metrics/: LLM依赖指标
+"""
 from __future__ import annotations
 
+# ============================================================================
+# 核心计算函数（从 core.py 导出）
+# ============================================================================
+from .core import (
+    # 标准化函数
+    normalize_answer,
+    normalize_title,
+    normalize_text,
+    normalize_triple_element,
+
+    # 基础计算
+    compute_f1_from_tokens,
+    compute_set_f1,
+    compute_em_single,
+    compute_f1_single,
+    metric_max_over_ground_truths,
+
+    # 答案评估
+    compute_answer_scores,
+
+    # 支持事实评估
+    compute_supporting_facts_scores,
+
+    # 联合指标
+    compute_joint_scores,
+
+    # 三元组评估
+    compute_triple_scores,
+
+    # 推理步骤评估
+    compute_reasoning_step_scores,
+
+    # 综合评估
+    compute_multihop_scores,
+    compute_hop_stratified_scores,
+
+    # 特殊答案常量
+    SPECIAL_ANSWERS,
+)
+
+# ============================================================================
 # LLM 依赖指标
+# ============================================================================
 from .context_relevance import compute_context_relevance
 from .answer_accuracy import compute_answer_correctness
 from .coverage import compute_coverage_score
@@ -11,49 +64,44 @@ from .rouge import compute_rouge_score
 from .utils import JSONHandler
 from .context_relevance_v2 import compute_context_relevance as compute_context_relevance_v2
 
-# 答案指标
-from .answer_metrics import (
-    compute_answer_em,
-    compute_answer_f1,
-    compute_answer_accuracy,
-    compute_answer_scores,
-    compute_token_overlap,
-    normalize_answer,
-)
-
-# 三元组指标
-from .triple_recall import (
-    normalize_text,
-    normalize_triple_element,
-    compute_triple_recall,
-    compute_triple_precision,
-    compute_triple_f1,
-)
-
-# 支持事实指标
-from .sf_metrics import (
-    normalize_title,
-    compute_sf_em,
-    compute_sf_f1,
-    compute_joint_em,
-    compute_joint_f1,
-    compute_multihop_scores,
-)
-
-# 多跳问答评估指标（MuSiQue, HotpotQA, 2WikiMultihop）
-from .multihop_eval import (
-    metric_max_over_ground_truths,
-    compute_answer_scores_with_aliases,
-    compute_paragraph_em,
-    compute_paragraph_f1,
-    compute_supporting_facts_scores,
-    compute_joint_scores,
-    compute_reasoning_step_scores,
-    compute_musique_scores,
-    compute_hop_stratified_scores,
-)
 
 __all__ = [
+    # 标准化函数
+    "normalize_answer",
+    "normalize_title",
+    "normalize_text",
+    "normalize_triple_element",
+
+    # 基础计算
+    "compute_f1_from_tokens",
+    "compute_set_f1",
+    "compute_em_single",
+    "compute_f1_single",
+    "metric_max_over_ground_truths",
+
+    # 答案评估
+    "compute_answer_scores",
+
+    # 支持事实评估
+    "compute_supporting_facts_scores",
+
+    # 联合指标
+    "compute_joint_scores",
+
+    # 三元组评估
+    "compute_triple_scores",
+
+    # 推理步骤评估
+    "compute_reasoning_step_scores",
+
+    # 综合评估
+    "compute_multihop_scores",
+    "compute_hop_stratified_scores",
+
+    # 常量
+    "SPECIAL_ANSWERS",
+
+    # LLM 依赖指标
     "compute_context_relevance",
     "compute_answer_correctness",
     "compute_coverage_score",
@@ -62,31 +110,4 @@ __all__ = [
     "compute_rouge_score",
     "JSONHandler",
     "compute_context_relevance_v2",
-    "compute_answer_em",
-    "compute_answer_accuracy",
-    "compute_answer_f1",
-    "compute_answer_scores",
-    "compute_token_overlap",
-    "normalize_answer",
-    "normalize_text",
-    "normalize_triple_element",
-    "compute_triple_recall",
-    "compute_triple_precision",
-    "compute_triple_f1",
-    "normalize_title",
-    "compute_sf_em",
-    "compute_sf_f1",
-    "compute_joint_em",
-    "compute_joint_f1",
-    "compute_multihop_scores",
-    # 多跳问答评估
-    "metric_max_over_ground_truths",
-    "compute_answer_scores_with_aliases",
-    "compute_paragraph_em",
-    "compute_paragraph_f1",
-    "compute_supporting_facts_scores",
-    "compute_joint_scores",
-    "compute_reasoning_step_scores",
-    "compute_musique_scores",
-    "compute_hop_stratified_scores",
 ]
