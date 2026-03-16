@@ -520,25 +520,71 @@ def extract_evidence(item: Dict, config: DatasetConfig, documents: List[Dict]) -
     return " ".join(evidence_parts)
 
 
-def extract_reasoning_chain(item: Dict, config: DatasetConfig) -> str:
+def extract_reasoning_steps(item: Dict) -> List[Dict]:
     """
-    提取推理链文本（用于多跳问答数据集如 MuSiQue）
-    
-    格式: "Q: sub_question_1 A: answer_1 | Q: sub_question_2 A: answer_2"
+    提取结构化推理步骤（用于多跳问答数据集如 MuSiQue）
+
+    返回:
+        [{"step": 1, "question": "...", "answer": "...", "entity": "...", "relation": "..."}, ...]
+
+    注意: MuSiQue 有两种格式：
+    - 标准格式: "entity >> relation" (36%)
+    - 自然语言格式: 完整问句 (64%)
+
+    对于自然语言格式，entity 和 relation 为空，使用 question 字段。
     """
     decomposition = item.get("question_decomposition", [])
     if not isinstance(decomposition, list):
-        return ""
-    
-    chain_parts = []
-    for step in decomposition:
+        return []
+
+    steps = []
+    for i, step in enumerate(decomposition):
         if isinstance(step, dict):
             q = step.get("question", "")
             a = step.get("answer", "")
             if q and a:
-                chain_parts.append(f"Q: {q} A: {a}")
-    
-    return " | ".join(chain_parts)
+                step_data = {
+                    "step": i + 1,
+                    "question": q,  # 保留原始问题
+                    "answer": a,
+                }
+
+                # 尝试解析标准格式 "entity >> relation"
+                if " >> " in q:
+                    parts = q.split(" >> ", 1)
+                    step_data["entity"] = parts[0].strip()
+                    step_data["relation"] = parts[1].strip() if len(parts) > 1 else ""
+                else:
+                    # 自然语言格式，entity/relation 为空
+                    step_data["entity"] = ""
+                    step_data["relation"] = ""
+
+                steps.append(step_data)
+
+    return steps
+
+
+def extract_supporting_paragraph_titles(item: Dict) -> List[str]:
+    """
+    提取支持段落标题（用于 MuSiQue 等数据集）
+
+    返回:
+        支持段落标题列表
+
+    注意: 删除了 supporting_paragraph_indices 字段，因为语料库中无 idx 字段无法关联。
+    """
+    paragraphs = item.get("paragraphs", [])
+    if not isinstance(paragraphs, list):
+        return []
+
+    titles = []
+    for p in paragraphs:
+        if isinstance(p, dict) and p.get("is_supporting"):
+            title = p.get("title", "")
+            if title:
+                titles.append(title)
+
+    return titles
 
 
 def process_item(
@@ -559,9 +605,12 @@ def process_item(
 
     # 提取证据（用于评估）
     evidence_text = extract_evidence(item, config, documents)
-    
-    # 提取推理链（用于多跳问答数据集）
-    reasoning_chain = extract_reasoning_chain(item, config)
+
+    # 提取推理步骤（用于多跳问答数据集）
+    reasoning_steps = extract_reasoning_steps(item)
+
+    # 提取支持段落标题（用于 MuSiQue 等数据集）
+    supporting_titles = extract_supporting_paragraph_titles(item)
 
     # 提取标准字段
     question_id = str(item.get(config.id_field, f"{config.name}-{idx}"))
@@ -573,6 +622,14 @@ def process_item(
         answer_text = answer_data[0] if answer_data else ""
     else:
         answer_text = str(answer_data)
+
+    # 提取答案别名（用于 MuSiQue 等数据集）
+    answer_aliases = item.get("answer_aliases", [])
+    if isinstance(answer_aliases, list):
+        # 过滤空值并去重
+        answer_aliases = [str(a) for a in answer_aliases if a]
+        if not answer_aliases:
+            answer_aliases = None
 
     corpus_name = config.name
 
@@ -614,10 +671,18 @@ def process_item(
         "evidence": evidence_text,
         "question_type": question_type,
     }
-    
-    # 添加推理链字段（如果有）
-    if reasoning_chain:
-        question_eval["reasoning_chain"] = reasoning_chain
+
+    # 添加推理步骤（如果有）- 替代原来的 reasoning_chain
+    if reasoning_steps:
+        question_eval["reasoning_steps"] = reasoning_steps
+
+    # 添加支持段落标题（如果有）- 替代原来的 indices
+    if supporting_titles:
+        question_eval["supporting_paragraph_titles"] = supporting_titles
+
+    # 添加答案别名（如果有）
+    if answer_aliases:
+        question_eval["answer_aliases"] = answer_aliases
 
     # 保留额外字段（不覆盖已存在的评估字段）
     for field in config.extra_standard_fields:
