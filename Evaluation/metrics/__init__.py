@@ -40,6 +40,19 @@ from .sf_metrics import (
     compute_multihop_scores,
 )
 
+# 多跳问答评估指标（MuSiQue, HotpotQA, 2WikiMultihop）
+from .multihop_eval import (
+    metric_max_over_ground_truths,
+    compute_answer_scores_with_aliases,
+    compute_paragraph_em,
+    compute_paragraph_f1,
+    compute_supporting_facts_scores,
+    compute_joint_scores,
+    compute_reasoning_step_scores,
+    compute_musique_scores,
+    compute_hop_stratified_scores,
+)
+
 __all__ = [
     "compute_context_relevance",
     "compute_answer_correctness",
@@ -66,4 +79,14 @@ __all__ = [
     "compute_joint_em",
     "compute_joint_f1",
     "compute_multihop_scores",
+    # 多跳问答评估
+    "metric_max_over_ground_truths",
+    "compute_answer_scores_with_aliases",
+    "compute_paragraph_em",
+    "compute_paragraph_f1",
+    "compute_supporting_facts_scores",
+    "compute_joint_scores",
+    "compute_reasoning_step_scores",
+    "compute_musique_scores",
+    "compute_hop_stratified_scores",
 ]

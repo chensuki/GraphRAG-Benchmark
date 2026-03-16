@@ -22,6 +22,11 @@ from Evaluation.metrics import (
     compute_sf_f1,
     compute_joint_em,
     compute_joint_f1,
+    # 多跳问答评估
+    compute_answer_scores_with_aliases,
+    compute_supporting_facts_scores,
+    compute_musique_scores,
+    compute_hop_stratified_scores,
 )
 
 
@@ -90,16 +95,41 @@ async def evaluate_sample(item: Dict[str, Any]) -> Dict[str, Any]:
     results["has_retrieved_sf"] = bool(item.get("retrieved_supporting_facts"))
     results["has_retrieved_triples"] = bool(item.get("retrieved_triples"))
 
-    # 答案指标
+    # 检测数据集类型
+    is_musique = bool(item.get("supporting_paragraph_titles"))
+    has_aliases = bool(item.get("answer_aliases"))
+
     pred_answer = item.get("generated_answer", "") or ""
     gold_answer = item.get("ground_truth") or item.get("answer", "")
 
-    results["answer_em"] = compute_answer_em(pred_answer, gold_answer)
-    results["answer_accuracy"] = compute_answer_accuracy(pred_answer, gold_answer)
-    f1, precision, recall = compute_answer_f1(pred_answer, gold_answer)
-    results["answer_f1"] = f1
-    results["answer_precision"] = precision
-    results["answer_recall"] = recall
+    # 使用多跳问答评估（支持别名和段落级别支持事实）
+    if is_musique or has_aliases:
+        # MuSiQue 格式评估
+        answer_aliases = item.get("answer_aliases")
+        gold_supporting_titles = item.get("supporting_paragraph_titles", [])
+        pred_supporting_titles = item.get("retrieved_supporting_titles", [])
+        gold_reasoning_steps = item.get("reasoning_steps", [])
+        pred_reasoning_steps = item.get("retrieved_reasoning_steps", [])
+
+        musique_scores = compute_musique_scores(
+            pred_answer=pred_answer,
+            gold_answer=gold_answer,
+            answer_aliases=answer_aliases,
+            pred_supporting_titles=pred_supporting_titles if pred_supporting_titles else None,
+            gold_supporting_titles=gold_supporting_titles,
+            pred_reasoning_steps=pred_reasoning_steps if pred_reasoning_steps else None,
+            gold_reasoning_steps=gold_reasoning_steps
+        )
+        results.update(musique_scores)
+    else:
+        # 传统评估
+        results["answer_em"] = compute_answer_em(pred_answer, gold_answer)
+        results["answer_accuracy"] = compute_answer_accuracy(pred_answer, gold_answer)
+        f1, precision, recall = compute_answer_f1(pred_answer, gold_answer)
+        results["answer_f1"] = f1
+        results["answer_precision"] = precision
+        results["answer_recall"] = recall
+
     results["rouge_score"] = await compute_rouge_score(pred_answer, gold_answer)
 
     # 检索质量
@@ -108,23 +138,28 @@ async def evaluate_sample(item: Dict[str, Any]) -> Dict[str, Any]:
     if evidence:
         results["evidence_coverage"] = compute_evidence_coverage(context, evidence)
 
-    # 支持事实指标
-    gold_sf = item.get("supporting_facts")
-    pred_sf = item.get("retrieved_supporting_facts")
+    # 传统支持事实指标（HotpotQA 格式：需要 sent_id）
+    if not is_musique:
+        gold_sf = item.get("supporting_facts")
+        pred_sf = item.get("retrieved_supporting_facts")
 
-    if gold_sf and gold_sf.get("title") and pred_sf:
-        results["sf_em"] = compute_sf_em(pred_sf, gold_sf)
-        sf_f1, sf_prec, sf_rec = compute_sf_f1(pred_sf, gold_sf)
-        results["sf_f1"] = sf_f1
-        results["sf_precision"] = sf_prec
-        results["sf_recall"] = sf_rec
-        if results.get("sf_em") is not None:
-            results["joint_em"] = compute_joint_em(results["answer_em"], results["sf_em"])
-        if sf_prec is not None and sf_rec is not None:
-            jf1, jp, jr = compute_joint_f1(precision, recall, sf_prec, sf_rec)
-            results["joint_f1"] = jf1
-            results["joint_precision"] = jp
-            results["joint_recall"] = jr
+        if gold_sf and gold_sf.get("title") and pred_sf:
+            results["sf_em"] = compute_sf_em(pred_sf, gold_sf)
+            sf_f1, sf_prec, sf_rec = compute_sf_f1(pred_sf, gold_sf)
+            results["sf_f1"] = sf_f1
+            results["sf_precision"] = sf_prec
+            results["sf_recall"] = sf_rec
+            if results.get("sf_em") is not None:
+                results["joint_em"] = compute_joint_em(results["answer_em"], results["sf_em"])
+            if sf_prec is not None and sf_rec is not None:
+                jf1, jp, jr = compute_joint_f1(
+                    results.get("answer_precision", 0),
+                    results.get("answer_recall", 0),
+                    sf_prec, sf_rec
+                )
+                results["joint_f1"] = jf1
+                results["joint_precision"] = jp
+                results["joint_recall"] = jr
 
     # 三元组指标
     gold_triples = item.get("evidences")
@@ -149,10 +184,18 @@ def analyze_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
     has_pred_sf = sum(1 for item in data if item.get("retrieved_supporting_facts")) / total
     has_pred_triples = sum(1 for item in data if item.get("retrieved_triples")) / total
 
+    # MuSiQue 特有字段
+    has_supporting_titles = sum(1 for item in data if item.get("supporting_paragraph_titles")) / total
+    has_answer_aliases = sum(1 for item in data if item.get("answer_aliases")) / total
+    has_reasoning_steps = sum(1 for item in data if item.get("reasoning_steps")) / total
+
     type_dist = defaultdict(int)
     for item in data:
         qt = item.get("question_type", "unknown")
         type_dist[qt] += 1
+
+    # 判断数据集类型
+    is_musique = has_supporting_titles > 0.5
 
     return {
         "gold_sf": has_gold_sf,
@@ -163,6 +206,11 @@ def analyze_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         "question_types": dict(type_dist),
         "sf_evaluable": has_gold_sf > 0 and has_pred_sf > 0,
         "triple_evaluable": has_gold_triples > 0 and has_pred_triples > 0,
+        # MuSiQue 特有
+        "is_musique": is_musique,
+        "supporting_titles": has_supporting_titles,
+        "answer_aliases": has_answer_aliases,
+        "reasoning_steps": has_reasoning_steps,
     }
 
 
@@ -210,14 +258,20 @@ async def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
     analysis = analyze_dataset(data)
 
     print(f"\n开始评估 {len(data)} 个样本...")
-    print(f"  数据集 supporting_facts: {analysis['gold_sf']*100:.0f}%")
-    print(f"  数据集 evidences: {analysis['gold_triples']*100:.0f}%")
+    if analysis.get("is_musique"):
+        print("  [MuSiQue 格式检测]")
+        print(f"  supporting_paragraph_titles: {analysis['supporting_titles']*100:.0f}%")
+        print(f"  answer_aliases: {analysis['answer_aliases']*100:.0f}%")
+        print(f"  reasoning_steps: {analysis['reasoning_steps']*100:.0f}%")
+    else:
+        print(f"  数据集 supporting_facts: {analysis['gold_sf']*100:.0f}%")
+        print(f"  数据集 evidences: {analysis['gold_triples']*100:.0f}%")
     print(f"  数据集 evidence 文本: {analysis['gold_evidence']*100:.0f}%")
     print(f"  框架 retrieved_supporting_facts: {analysis['pred_sf']*100:.0f}%")
     print(f"  框架 retrieved_triples: {analysis['pred_triples']*100:.0f}%")
     print(f"  问题类型: {list(analysis['question_types'].keys())}")
     print(f"\n  评估能力:")
-    print(f"    支持事实评估: {'可用' if analysis['sf_evaluable'] else '不可用（框架未输出 retrieved_supporting_facts）'}")
+    print(f"    支持事实评估: {'可用' if analysis['sf_evaluable'] or analysis.get('is_musique') else '不可用（框架未输出 retrieved_supporting_facts/titles）'}")
     print(f"    三元组评估: {'可用' if analysis['triple_evaluable'] else '不可用（框架未输出 retrieved_triples）'}")
 
     for i, item in enumerate(data):
@@ -239,12 +293,19 @@ async def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
     fairness = compute_fairness_metrics(all_results)
     grouped = group_by_question_type(data, all_results)
 
+    # Hop 分层评估（MuSiQue）
+    hop_stratified = None
+    if analysis.get("is_musique"):
+        hop_stratified = compute_hop_stratified_scores(all_results)
+
     metrics = [
         "answer_em", "answer_accuracy", "answer_f1", "answer_precision",
         "answer_recall", "rouge_score", "evidence_coverage",
         "sf_em", "sf_f1", "sf_precision", "sf_recall",
         "joint_em", "joint_f1", "joint_precision", "joint_recall",
         "triple_f1", "triple_precision", "triple_recall",
+        # MuSiQue 特有
+        "step_accuracy", "step_em", "step_f1",
     ]
 
     avg_scores = {}
@@ -262,6 +323,7 @@ async def evaluate_dataset(data: List[Dict[str, Any]]) -> Dict[str, Any]:
         "metric_counts": metric_counts,
         "average_scores": avg_scores,
         "grouped_scores": grouped,
+        "hop_stratified": hop_stratified,
         "detailed_results": all_results,
         "field_analysis": analysis,
     }
@@ -279,6 +341,17 @@ def format_report(results: Dict[str, Any]) -> str:
         "=" * 60,
         f"总样本数: {results['total_samples']}",
         f"有效样本数: {results['valid_samples']}",
+    ]
+
+    # MuSiQue 格式标记
+    if a.get("is_musique"):
+        lines.append("")
+        lines.append("[MuSiQue 格式]")
+        lines.append(f"  supporting_paragraph_titles: {a.get('supporting_titles', 0)*100:.0f}%")
+        lines.append(f"  answer_aliases: {a.get('answer_aliases', 0)*100:.0f}%")
+        lines.append(f"  reasoning_steps: {a.get('reasoning_steps', 0)*100:.0f}%")
+
+    lines.extend([
         "",
         "公平性指标:",
         f"  success_rate:      {f.get('success_rate', 0)*100:.1f}%",
@@ -286,12 +359,12 @@ def format_report(results: Dict[str, Any]) -> str:
         f"  empty_context_rate:{f.get('empty_context_rate', 0)*100:.1f}%",
         "",
         "评估能力:",
-        f"  supporting_facts: {'可用' if a.get('sf_evaluable') else '不可用'}",
+        f"  supporting_facts: {'可用' if a.get('sf_evaluable') or a.get('is_musique') else '不可用'}",
         f"  triples:          {'可用' if a.get('triple_evaluable') else '不可用'}",
         "",
         "答案指标:",
         "-" * 40,
-    ]
+    ])
 
     for metric in ["answer_em", "answer_f1", "answer_precision", "answer_recall", "rouge_score"]:
         if metric in results.get("average_scores", {}):
@@ -318,6 +391,18 @@ def format_report(results: Dict[str, Any]) -> str:
                 n = counts.get(metric, 0)
                 lines.append(f"  {metric:20s}: {score:.4f} (n={n})")
 
+    # MuSiQue 推理步骤指标
+    step_metrics = ["step_accuracy", "step_em", "step_f1"]
+    if any(m in results.get("average_scores", {}) for m in step_metrics):
+        lines.append("")
+        lines.append("推理步骤指标 (MuSiQue):")
+        lines.append("-" * 40)
+        for metric in step_metrics:
+            if metric in results.get("average_scores", {}):
+                score = results["average_scores"][metric]
+                n = counts.get(metric, 0)
+                lines.append(f"  {metric:20s}: {score:.4f} (n={n})")
+
     triple_metrics = ["triple_f1", "triple_precision", "triple_recall"]
     if any(m in results.get("average_scores", {}) for m in triple_metrics):
         lines.append("")
@@ -328,6 +413,19 @@ def format_report(results: Dict[str, Any]) -> str:
                 score = results["average_scores"][metric]
                 n = counts.get(metric, 0)
                 lines.append(f"  {metric:20s}: {score:.4f} (n={n})")
+
+    # Hop 分层评估（MuSiQue）
+    hop_stratified = results.get("hop_stratified")
+    if hop_stratified:
+        lines.append("")
+        lines.append("Hop 分层评估 (MuSiQue):")
+        lines.append("-" * 40)
+        for hop_key in sorted(hop_stratified.keys()):
+            hop_data = hop_stratified[hop_key]
+            lines.append(f"  [{hop_key}] (n={hop_data.get('count', 0)})")
+            for metric in ["answer_em", "answer_f1", "sf_f1", "joint_f1"]:
+                if metric in hop_data:
+                    lines.append(f"    {metric}: {hop_data[metric]:.4f}")
 
     grouped = results.get("grouped_scores", {})
     if grouped:
