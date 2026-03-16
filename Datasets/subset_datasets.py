@@ -359,6 +359,18 @@ def process_dataset(
     output_corpus_path = os.path.join(corpus_dir, output_corpus_name)
     output_questions_path = os.path.join(questions_dir, output_questions_name)
     
+    # 更新 corpus_name 以避免工作目录冲突
+    # 例如: hotpotqa_distractor -> hotpotqa_500
+    subset_corpus_name = f"{dataset_type}_{num_questions}"
+    for item in filtered_corpus:
+        if "corpus_name" in item:
+            item["corpus_name"] = subset_corpus_name
+    
+    # 更新问题中的 source 字段
+    for q in selected_questions:
+        if "source" in q:
+            q["source"] = subset_corpus_name
+    
     # 保存结果
     save_json(filtered_corpus, output_corpus_path)
     save_json(selected_questions, output_questions_path)
