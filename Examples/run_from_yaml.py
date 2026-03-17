@@ -294,17 +294,33 @@ def main() -> int:
         epilog="""
 Examples:
   python Examples/run_from_yaml.py --dry-run
-  python Examples/run_from_yaml.py --framework lightrag
-  python Examples/run_from_yaml.py --framework all
+  python Examples/run_from_yaml.py --framework lightrag --subset medical --sample 10
+  python Examples/run_from_yaml.py --framework all --subset hotpotqa_500
         """
     )
-    parser.add_argument("--config", default="configs/experiment.yaml")
+    # 配置文件
+    parser.add_argument("--config", default="configs/experiment.yaml",
+                        help="配置文件路径 (default: configs/experiment.yaml)")
+    
+    # 框架选择
     parser.add_argument(
         "--framework",
         default="auto",
         choices=["auto", "all"] + SUPPORTED_FRAMEWORKS,
+        help="框架名称: auto=使用配置, all=所有启用的框架, 或具体框架名"
     )
-    parser.add_argument("--dry-run", action="store_true")
+    
+    # 数据集临时覆盖
+    parser.add_argument("--subset", default=None,
+                        help="数据集子集名称 (覆盖配置文件)")
+    parser.add_argument("--sample", type=int, default=None,
+                        help="问题采样数 (覆盖配置文件)")
+    # 运行控制
+    parser.add_argument("--dry-run", action="store_true",
+                        help="仅打印配置，不执行")
+    parser.add_argument("--skip-build", action="store_true",
+                        help="跳过索引构建")
+    
     args = parser.parse_args()
 
     # 加载配置
@@ -315,6 +331,18 @@ Examples:
 
     with open(cfg_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
+
+    # 应用命令行参数覆盖
+    if args.subset:
+        config.setdefault("dataset", {})["subset"] = args.subset
+        logger.info(f"[override] subset={args.subset}")
+    if args.sample is not None:
+        config.setdefault("dataset", {})["sample"] = args.sample
+        logger.info(f"[override] sample={args.sample}")
+    if args.skip_build:
+        for fw in config.get("frameworks", {}):
+            config["frameworks"][fw]["skip_build"] = True
+        logger.info(f"[override] skip_build=True (all frameworks)")
 
     # 确定框架
     frameworks = resolve_frameworks(args.framework, config)

@@ -260,6 +260,42 @@ results/
 
 ## 评估
 
+### 统一评估（推荐）
+
+使用 `unified_eval.py` 进行一站式评估，自动检测数据集格式并计算所有适用指标：
+
+```powershell
+python -m Evaluation.unified_eval `
+  --data_file ./results/clearrag/hotpotqa_500/20260317-125800/predictions_hotpotqa_500.json `
+  --output_file ./results/evaluations/clearrag_hotpotqa_eval.json `
+  --report
+```
+
+**参数说明**：
+
+| 参数 | 说明 |
+|------|------|
+| `--data_file` | 预测结果文件路径（必需） |
+| `--output_file` | 评估结果输出路径（必需） |
+| `--detailed` | 输出详细结果（包含每条样本得分） |
+| `--report` | 打印格式化报告 |
+
+**评估指标**：
+
+| 指标类别 | 具体指标 | 说明 |
+|----------|----------|------|
+| 答案质量 | `answer_em`, `answer_f1`, `rouge_score` | 精确匹配、F1、ROUGE |
+| 检索质量 | `evidence_coverage` | 证据覆盖度 |
+| 支持事实 | `sf_em`, `sf_f1` | 支持事实召回（HotpotQA/MuSiQue） |
+| 联合指标 | `joint_em`, `joint_f1` | 答案+支持事实联合评估 |
+| 三元组 | `triple_f1` | 知识三元组评估（2Wiki） |
+| 推理步骤 | `step_accuracy` | 推理步骤评估（MuSiQue） |
+| Hop分层 | `hop_stratified` | 按跳数分层评估（MuSiQue） |
+
+**支持的格式**：
+- 自动检测 HotpotQA / MuSiQue / 2WikiMultihop / Medical 格式
+- 根据数据集字段自动启用对应评估
+
 ### 检索评估
 
 评估上下文相关性和证据召回率：
