@@ -22,6 +22,13 @@ frameworks:
     enabled: true
     mode: API
     corpus_concurrency: 1
+
+notification:
+  enabled: true
+  gateway_url: http://127.0.0.1:18789
+  token: ${OPENCLAW_TOKEN}
+  # sessionKey 格式: agent:{agentId}:{platform}:{type}:{id}
+  session_key: agent:main:feishu:group:oc_xxx
 ```
 """
 from __future__ import annotations
@@ -29,16 +36,24 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import yaml
 
 from subset_registry import FRAMEWORK_SUPPORTED_SUBSETS, get_subset_paths
-from runner import FrameworkRunner
+from runner import FrameworkRunner, ProgressCallback
 from adapters import FrameworkConfig, has_adapter
 from adapters.base import DEFAULT_EMBED_TYPE, DEFAULT_EMBED_PROVIDER, DEFAULT_TOP_K, DEFAULT_MAX_CONCURRENCY
+
+# 尝试导入通知客户端
+try:
+    from openclaw_notifier import OpenClawWebhookClient, ExperimentTracker
+    NOTIFIER_AVAILABLE = True
+except ImportError:
+    NOTIFIER_AVAILABLE = False
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s",
@@ -47,6 +62,104 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 SUPPORTED_FRAMEWORKS = list(FRAMEWORK_SUPPORTED_SUBSETS.keys())
+
+
+# ============ 通知辅助函数 ============
+
+def safe_notify(notify_func, *args, **kwargs):
+    """
+    安全发送通知，失败不阻塞主流程
+
+    Args:
+        notify_func: 通知方法
+        *args, **kwargs: 传递给通知方法的参数
+    """
+    try:
+        notify_func(*args, **kwargs)
+    except Exception as e:
+        logger.warning(f"🦞 Notification failed: {e}")
+
+
+def create_notifier(config: Dict[str, Any]) -> Optional["OpenClawWebhookClient"]:
+    """
+    根据配置创建通知客户端
+
+    Args:
+        config: YAML 配置字典
+
+    Returns:
+        OpenClawWebhookClient 实例，或 None（如果未启用）
+    """
+    if not NOTIFIER_AVAILABLE:
+        logger.warning("openclaw_notifier not available, notifications disabled")
+        return None
+
+    notify_cfg = config.get("notification", {})
+
+    if not notify_cfg.get("enabled", False):
+        return None
+
+    # 获取配置值
+    token = notify_cfg.get("token", "")
+    # 支持环境变量展开
+    if token.startswith("${") and token.endswith("}"):
+        env_var = token[2:-1]
+        token = os.environ.get(env_var, "")
+
+    if not token:
+        logger.warning("notification.enabled=true but no token provided")
+        return None
+
+    try:
+        session_key = notify_cfg.get("session_key", "")
+        gateway_url = notify_cfg.get("gateway_url", "http://127.0.0.1:18789")
+
+        logger.info(f"🦞 Creating notification client")
+        logger.info(f"🦞 gateway_url: {gateway_url}")
+        logger.info(f"🦞 session_key: {session_key}")
+
+        client = OpenClawWebhookClient(
+            gateway_url=gateway_url,
+            token=token,
+            session_key=session_key,
+        )
+        logger.info("🦞 Notification client created successfully")
+        return client
+    except Exception as e:
+        logger.warning(f"🦞 Failed to create notification client: {e}")
+        return None
+
+
+def create_progress_callback(
+    notifier: Optional["OpenClawWebhookClient"],
+    experiment_name: str,
+    config: Dict[str, Any],
+) -> Optional[Callable[[str, float, Optional[Dict]], None]]:
+    """
+    创建进度回调函数（仅处理语料库级别进度）
+
+    职责划分：
+    - 外层（run_framework）：实验级别的 started/completed/error 通知
+    - 此回调：语料库级别的 indexing/querying 进度
+    """
+    if not notifier:
+        return None
+
+    notify_cfg = config.get("notification", {})
+    if not notify_cfg.get("notify_on_progress", True):
+        return None
+
+    progress_interval = notify_cfg.get("progress_interval", 0.2)
+    last_progress = [0.0]
+
+    def callback(stage: str, progress: float, info: Optional[Dict] = None):
+        """进度回调：检查间隔后发送通知"""
+        if progress - last_progress[0] >= progress_interval:
+            last_progress[0] = progress
+            logger.info(f"🦞 notify_progress: {experiment_name} @ {progress:.1%}")
+            safe_notify(notifier.notify_progress, experiment_name, progress, metrics=info)
+
+    return callback
 
 
 def resolve_frameworks(args_framework: str | None, config: Dict[str, Any]) -> List[str]:
@@ -72,8 +185,24 @@ def resolve_frameworks(args_framework: str | None, config: Dict[str, Any]) -> Li
     return []
 
 
-async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = False) -> int:
-    """运行单个框架"""
+async def run_framework(
+    framework: str,
+    config: Dict[str, Any],
+    dry_run: bool = False,
+    notifier: Optional["OpenClawWebhookClient"] = None,
+) -> int:
+    """
+    运行单个框架
+
+    Args:
+        framework: 框架名称
+        config: 配置字典
+        dry_run: 是否为干跑
+        notifier: 通知客户端
+
+    Returns:
+        退出码 (0=成功, 1=失败)
+    """
     if not has_adapter(framework):
         logger.error(f"No adapter for '{framework}'")
         return 1
@@ -96,6 +225,9 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
 
     # 运行ID
     run_id = run_cfg.get("run_id") or datetime.now().strftime("%Y%m%d-%H%M%S")
+
+    # 实验名称（用于通知）
+    experiment_name = f"{framework} - {subset}"
 
     # 嵌入配置
     embed_type = fw_cfg.get("embed_type") or embed_cfg.get("type", DEFAULT_EMBED_TYPE)
@@ -169,8 +301,6 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
         return 1
 
     # 输出路径
-    # workspace: 优先使用框架配置中的 workspace_dir，否则使用默认路径
-    # predictions: {root}/{framework}/{subset}/{run_id}/
     output_root = output_cfg.get("root", "./results")
     workspace_dir = fw_cfg.get("workspace_dir") or str(Path(output_root) / framework / subset / run_id / "workspace")
     predictions_dir = str(Path(output_root) / framework / subset / run_id)
@@ -183,8 +313,31 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
         logger.info(f"[{framework}] Dry run - skipping")
         return 0
 
+    # 创建进度回调
+    progress_callback = create_progress_callback(notifier, experiment_name, config)
+
+    # 通知配置
+    notify_cfg = config.get("notification", {})
+    notify_on_start = notify_cfg.get("notify_on_start", True)
+    notify_on_complete = notify_cfg.get("notify_on_complete", True)
+    notify_on_error = notify_cfg.get("notify_on_error", True)
+
     # 运行
     try:
+        # 发送开始通知
+        if notifier and notify_on_start:
+            logger.info(f"🦞 notify_start: {experiment_name}")
+            safe_notify(
+                notifier.notify_start,
+                experiment_name,
+                config={
+                    "framework": framework,
+                    "subset": subset,
+                    "sample": sample,
+                    "run_id": run_id,
+                },
+            )
+
         runner = FrameworkRunner(
             framework=framework,
             config=framework_config,
@@ -198,15 +351,46 @@ async def run_framework(framework: str, config: Dict[str, Any], dry_run: bool = 
             corpus_concurrency=fw_cfg.get("corpus_concurrency", 1),
             skip_build=fw_cfg.get("skip_build", False),
             index_only=fw_cfg.get("index_only", False),
+            progress_callback=progress_callback,
         )
 
         result = await runner.run()
-        return 0 if result.get("error_count", 0) == 0 else 1
+        error_count = result.get("error", 0)
+
+        # 发送结束通知
+        if notifier:
+            if error_count == 0 and notify_on_complete:
+                logger.info(f"🦞 notify_complete: {experiment_name}")
+                safe_notify(
+                    notifier.notify_complete,
+                    experiment_name,
+                    results={
+                        "success": result.get("success", 0),
+                        "error": result.get("error", 0),
+                        "output": predictions_dir,
+                    },
+                )
+            elif error_count > 0 and notify_on_error:
+                logger.info(f"🦞 notify_error: {experiment_name} ({error_count} failed)")
+                safe_notify(
+                    notifier.notify_error,
+                    experiment_name,
+                    Exception(f"{error_count} corpus failed"),
+                    context=result,
+                )
+
+        return 0 if error_count == 0 else 1
 
     except Exception as e:
         logger.error(f"[{framework}] Failed: {e}")
         import traceback
         logger.debug(traceback.format_exc())
+
+        # 发送错误通知
+        if notifier and notify_on_error:
+            logger.info(f"🦞 notify_error: {experiment_name} (exception)")
+            safe_notify(notifier.notify_error, experiment_name, e)
+
         return 1
 
 
@@ -352,12 +536,15 @@ Examples:
 
     logger.info(f"[run] frameworks={frameworks}")
 
+    # 创建通知客户端
+    notifier = create_notifier(config)
+
     # 运行
     exit_code = 0
     continue_on_error = config.get("run", {}).get("continue_on_error", False)
 
     for framework in frameworks:
-        result = asyncio.run(run_framework(framework, config, args.dry_run))
+        result = asyncio.run(run_framework(framework, config, args.dry_run, notifier))
         if result != 0:
             exit_code = result
             if not continue_on_error:

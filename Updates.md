@@ -35,6 +35,7 @@
 [2026-03-10 16:30:00] 修复 Datasets/download_datasets.py 的 2Wiki 转换：questions_full 改为直接保存原始规范 schema（不再包 _original）；2Wiki 标准问题输出额外保留 type/evidences/supporting_facts/context；并改为每题独立语料（source/corpus_name=id），避免整套数据共享同一 source 导致 benchmark 对齐错误。
 [2026-03-13 10:35:00] 新增公平评估方案文档 docs/plans/2026-03-13-fair-evaluation-design.md：明确当前 JSON 下可严格评估的主指标（success_rate、empty_context_rate、answer_em、answer_f1、rouge_score、context_relevancy、evidence_recall、faithfulness），并区分弱近似指标与后续需要统一 retrieval schema 才能严格评估的指标。
 [2026-03-13 23:30:58] 重构 Evaluation/unified_eval.py 为统一公平评估入口：新增 success/failure/empty_context/eligible coverage 指标，区分成功样本质量分与全样本质量分，并按 question_type 输出分组结果；同步收敛 sf_metrics/triple_recall 的严格结构化评估口径。
+[2026-03-17 11:20:00] 修复 OpenClaw 通知链路：run_from_yaml 结束阶段改为使用 runner 返回的 error 字段判断失败，并将最终错误通知从 notify_on_complete 分支中拆出；runner 在单语料异常和 gather 未捕获异常时显式发出 error 进度事件，保证失败可被通知系统正确感知。
 [2026-03-14 15:05:00] 简化语料数据结构：删除 doc_id、question_id、text、sentences 冗余字段，仅保留 corpus_name、title、context 三个核心字段，context 格式为 `[title]\n内容`。
 [2026-03-14 17:30:00] 新增 Examples/chunking.py 统一切分模块：标题感知切分（每个 title = 一个段落）+ Token 切分（超过 1200 token 则切分 + 首尾重叠 100 token）；LinearRAG 适配器已集成，所有框架切分策略统一。
 [2026-03-14 18:00:00] 重构数据流支持分批索引：merge_corpus_by_name 返回 documents 列表；runner 传递 documents 给适配器；LightRAG 适配器支持分批索引（batch_size=100），解决 HotpotQA/2Wiki 大数据集一次性索引超时问题。

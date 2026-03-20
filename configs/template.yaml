@@ -46,6 +46,22 @@ neo4j:
 output:
   root: ./results
 
+# OpenClaw 通知配置（可选）
+# 使用 WebSocket chat.send 发送消息到指定会话
+notification:
+  enabled: false                          # 是否启用通知
+  gateway_url: http://127.0.0.1:18789     # OpenClaw Gateway 地址
+  token: ${OPENCLAW_TOKEN}                # API token（建议用环境变量）
+  # sessionKey 格式: agent:{agentId}:{platform}:{type}:{id}
+  # 示例: agent:main:feishu:group:oc_1c7e1ca32c389ced68a7508df7bfb8fa
+  session_key: ""                         # 完整的 sessionKey
+  # 通知选项
+  notify_on_start: false                   # 实验开始时通知
+  notify_on_progress: false                # 进度更新时通知
+  notify_on_complete: true                # 实验完成时通知
+  notify_on_error: true                   # 实验出错时通知
+  progress_interval: 0.5                  # 进度通知间隔（0.5 = 每 50%）
+
 # 框架配置（仅框架特有参数）
 frameworks:
   lightrag:

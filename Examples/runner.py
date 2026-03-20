@@ -2,13 +2,15 @@
 统一框架运行器
 
 提供统一的基准测试运行流程。
+支持进度回调用于通知系统。
 """
 from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from tqdm import tqdm
 
@@ -39,6 +41,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# 进度回调类型
+ProgressCallback = Optional[Callable[[str, float, Optional[Dict]], None]]
+
+
 class FrameworkRunner:
     """
     统一的框架运行器
@@ -46,6 +52,12 @@ class FrameworkRunner:
     路径结构：
     {workspace_dir}/{corpus_name}/  - 索引文件
     {predictions_dir}/predictions_{corpus_name}.json  - 预测结果
+
+    进度回调：
+    callback(stage: str, progress: float, info: Optional[Dict])
+    - stage: "indexing" | "querying"
+    - progress: 0.0 - 1.0
+    - info: 额外信息字典
     """
 
     def __init__(
@@ -62,6 +74,7 @@ class FrameworkRunner:
         corpus_concurrency: int = 1,
         skip_build: bool = False,
         index_only: bool = False,
+        progress_callback: ProgressCallback = None,
     ):
         self.framework = framework
         self.config = config
@@ -73,6 +86,12 @@ class FrameworkRunner:
         self.corpus_concurrency = max(1, corpus_concurrency)
         self.skip_build = skip_build
         self.index_only = index_only
+        self.progress_callback = progress_callback
+
+        # 进度追踪（线程安全）
+        self._completed_indexing = 0
+        self._completed_querying = 0
+        self._progress_lock = threading.Lock()
 
         # 加载数据
         logger.info(f"Loading corpus: {corpus_path}")
@@ -96,16 +115,22 @@ class FrameworkRunner:
         self.workspace_dir.mkdir(parents=True, exist_ok=True)
         self.predictions_dir.mkdir(parents=True, exist_ok=True)
 
+    def _emit_progress(self, stage: str, progress: float, info: Optional[Dict] = None):
+        """发送进度通知（失败不阻塞主流程）"""
+        if self.progress_callback:
+            self.progress_callback(stage, progress, info)
+
     async def run(self) -> Dict[str, any]:
         """运行基准测试"""
         logger.info(f"Starting: {self.framework}, corpora={len(self.corpus_data)}, concurrency={self.corpus_concurrency}")
 
         semaphore = asyncio.Semaphore(self.corpus_concurrency)
         results = {}
+        total_corpora = len(self.corpus_data)
 
         async def process_with_limit(corpus_item: dict) -> tuple:
             async with semaphore:
-                return await self._process_corpus(corpus_item)
+                return await self._process_corpus(corpus_item, total_corpora)
 
         tasks = [process_with_limit(item) for item in self.corpus_data]
         task_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -133,7 +158,7 @@ class FrameworkRunner:
             "output": str(self.predictions_dir),
         }
 
-    async def _process_corpus(self, corpus_item: dict) -> Dict[str, any]:
+    async def _process_corpus(self, corpus_item: dict, total_corpora: int = 1) -> Dict[str, any]:
         """处理单个语料库"""
         corpus_name = corpus_item["corpus_name"]
         context = corpus_item["context"]
@@ -166,6 +191,17 @@ class FrameworkRunner:
                 logger.info(f"Indexing: {corpus_name} ({len(context)} chars)")
                 await adapter.abuild_index(context, corpus_name=corpus_name)
                 logger.info(f"Indexed: {corpus_name}")
+
+                # 索引完成后更新进度
+                with self._progress_lock:
+                    self._completed_indexing += 1
+                    # 索引阶段占总进度的 50%
+                    progress = self._completed_indexing / total_corpora * 0.5
+                    self._emit_progress("indexing", progress, {
+                        "corpus_name": corpus_name,
+                        "completed": self._completed_indexing,
+                        "total": total_corpora,
+                    })
             else:
                 try:
                     adapter.load_index(corpus_name)
@@ -180,6 +216,18 @@ class FrameworkRunner:
                 corpus_questions,
                 top_k=self.config.top_k
             )
+
+            # 查询完成后更新进度
+            with self._progress_lock:
+                self._completed_querying += 1
+                # 查询阶段占总进度的 50%（从 50% 到 100%）
+                progress = 0.5 + self._completed_querying / total_corpora * 0.5
+                self._emit_progress("querying", progress, {
+                    "corpus_name": corpus_name,
+                    "questions_count": len(corpus_questions),
+                    "completed": self._completed_querying,
+                    "total": total_corpora,
+                })
 
             results = []
             for q, result in zip(corpus_questions, query_results):

@@ -12,6 +12,9 @@ langchain-core>=0.3.69
 langchain-openai>=0.3.28
 langchain-ollama
 
+# OpenClaw 通知（WebSocket 支持）
+websockets>=12.0
+
 # 数值计算
 numpy>=1.24.0,<3.0.0
 
