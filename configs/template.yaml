@@ -61,6 +61,10 @@ notification:
   notify_on_complete: true                # 实验完成时通知
   notify_on_error: true                   # 实验出错时通知
   progress_interval: 0.5                  # 进度通知间隔（0.5 = 每 50%）
+  max_retries: 3                          # 最大重试次数
+  retry_base_delay: 1.0                   # 重试基础延迟（秒）
+  enable_dedup: true                      # 启用通知去重
+  dedup_ttl: 60                           # 去重缓存 TTL（秒）
 
 # 框架配置（仅框架特有参数）
 frameworks:

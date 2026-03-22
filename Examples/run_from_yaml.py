@@ -50,7 +50,7 @@ from adapters.base import DEFAULT_EMBED_TYPE, DEFAULT_EMBED_PROVIDER, DEFAULT_TO
 
 # 尝试导入通知客户端
 try:
-    from openclaw_notifier import OpenClawWebhookClient, ExperimentTracker
+    from openclaw_notifier import OpenClawClient
     NOTIFIER_AVAILABLE = True
 except ImportError:
     NOTIFIER_AVAILABLE = False
@@ -80,7 +80,7 @@ def safe_notify(notify_func, *args, **kwargs):
         logger.warning(f"🦞 Notification failed: {e}")
 
 
-def create_notifier(config: Dict[str, Any]) -> Optional["OpenClawWebhookClient"]:
+def create_notifier(config: Dict[str, Any]) -> Optional["OpenClawClient"]:
     """
     根据配置创建通知客户端
 
@@ -88,7 +88,7 @@ def create_notifier(config: Dict[str, Any]) -> Optional["OpenClawWebhookClient"]
         config: YAML 配置字典
 
     Returns:
-        OpenClawWebhookClient 实例，或 None（如果未启用）
+        OpenClawClient 实例，或 None（如果未启用）
     """
     if not NOTIFIER_AVAILABLE:
         logger.warning("openclaw_notifier not available, notifications disabled")
@@ -114,14 +114,24 @@ def create_notifier(config: Dict[str, Any]) -> Optional["OpenClawWebhookClient"]
         session_key = notify_cfg.get("session_key", "")
         gateway_url = notify_cfg.get("gateway_url", "http://127.0.0.1:18789")
 
+        max_retries = notify_cfg.get("max_retries", 3)
+        retry_base_delay = notify_cfg.get("retry_base_delay", 1.0)
+        enable_dedup = notify_cfg.get("enable_dedup", True)
+        dedup_ttl = notify_cfg.get("dedup_ttl", 60)
+
         logger.info(f"🦞 Creating notification client")
         logger.info(f"🦞 gateway_url: {gateway_url}")
         logger.info(f"🦞 session_key: {session_key}")
+        logger.info(f"🦞 max_retries: {max_retries}, dedup: {enable_dedup}")
 
-        client = OpenClawWebhookClient(
+        client = OpenClawClient(
             gateway_url=gateway_url,
             token=token,
             session_key=session_key,
+            max_retries=max_retries,
+            retry_base_delay=retry_base_delay,
+            enable_dedup=enable_dedup,
+            dedup_ttl=dedup_ttl,
         )
         logger.info("🦞 Notification client created successfully")
         return client
@@ -131,7 +141,7 @@ def create_notifier(config: Dict[str, Any]) -> Optional["OpenClawWebhookClient"]
 
 
 def create_progress_callback(
-    notifier: Optional["OpenClawWebhookClient"],
+    notifier: Optional["OpenClawClient"],
     experiment_name: str,
     config: Dict[str, Any],
 ) -> Optional[Callable[[str, float, Optional[Dict]], None]]:
