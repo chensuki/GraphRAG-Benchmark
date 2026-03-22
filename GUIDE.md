@@ -482,3 +482,9 @@ frameworks:
   lightrag:
     workspace_dir: ./custom/path/{run_id}
 ```
+
+### 接入openclaw
+
+#### 输入认证token以及会话id
+
+
