@@ -7,17 +7,17 @@
 <p>
     <a href="#关于本项目" style="text-decoration: none; font-weight: bold;">📌关于本项目</a> •
     <a href="GUIDE.md" style="text-decoration: none; font-weight: bold;">📘运行指南</a> •
+    <a href="#project-changes" style="text-decoration: none; font-weight: bold;">🔄项目变更</a> •
     <a href="#news" style="text-decoration: none; font-weight: bold;">🎉News</a> •
     <a href="#about" style="text-decoration: none; font-weight: bold;">📖About</a> •
-    <a href="#leaderboards" style="text-decoration: none; font-weight: bold;">🏆Leaderboards</a> •
-    <a href="#task-examples" style="text-decoration: none; font-weight: bold;">🧩Task Examples</a>
-
+    <a href="#leaderboards" style="text-decoration: none; font-weight: bold;">🏆Leaderboards</a>
 </p>
-  <p>
-  <a href="#getting-started" style="text-decoration: none; font-weight: bold;">🔧Getting Started</a> •
+<p>
+    <a href="#task-examples" style="text-decoration: none; font-weight: bold;">🧩Task Examples</a> •
+    <a href="#getting-started" style="text-decoration: none; font-weight: bold;">🔧Getting Started</a> •
     <a href="#contribution--contact" style="text-decoration: none; font-weight: bold;">📬Contact</a> •
     <a href="#citation" style="text-decoration: none; font-weight: bold;">📝Citation</a>
-  </p>
+</p>
 </div>
 
 <h2 id="关于本项目">📌 关于本项目</h2>
@@ -32,7 +32,6 @@
 - 使用注册表模式实现框架的动态发现和延迟加载
 
 **2. YAML 配置简化**
-
 - 单一配置文件 `configs/template.yaml` 管理所有框架参数
 - 支持全局配置与框架特定配置的层级覆盖
 - 简化命令行参数，通过配置文件控制实验
@@ -42,15 +41,35 @@
 - `FrameworkRunner` 提供标准化的索引构建、查询、结果保存流程
 - 异步并发处理，支持语料库级别的并发控制
 
-### 📝 主要变化
+<h2 id="project-changes">🔄 项目变更（对比原始仓库）</h2>
 
-| 模块 | 原项目 | 本项目 |
+### 🎯 核心功能改进
+
+| 功能 | 原项目 | 本项目 |
 |------|--------|--------|
-| 框架运行 | 各框架独立脚本 | 统一 `runner.py` + 适配器模式 |
-| 配置方式 | 分散在各脚本中 | 集中式 YAML 配置 |
-| 框架集成 | 直接调用框架API | 适配器抽象层隔离差异 |
-| 参数管理 | 命令行参数为主 | YAML配置优先 |
+| 框架运行 | 各框架独立脚本 | 统一入口 + 适配器模式 |
+| 配置方式 | 分散在各脚本 | 集中式 YAML 配置 |
+| 框架集成 | 直接调用框架 API | 适配器抽象层隔离 |
+| 评估脚本 | 分离的检索/生成评估 | 新增统一评估入口 |
+| 数据集管理 | 手动下载 | 自动下载 + 子集截取 |
 | 扩展性 | 需修改主流程 | 只需实现新适配器 |
+
+### 🚀 新增功能
+
+**1. 框架适配器系统**
+- 6 种框架统一接口：LightRAG、ClearRAG、LinearRAG、Fast-GraphRAG、HippoRAG2、DigiMON
+- 注册表模式支持动态发现和延迟加载
+
+**2. 统一评估脚本**
+- `unified_eval.py` 一键完成答案、检索、支持事实等多维度评估
+- 支持 HotpotQA、MuSiQue、2WikiMultihop 等多数据集格式
+
+**3. 数据集管理工具**
+- `download_datasets.py` 自动下载原始数据集
+- `subset_datasets.py` 快速截取实验子集
+
+**4. 实验通知集成**
+- `openclaw_notifier.py` 支持openclaw自动化实验
 
 ### 🚀 快速开始
 
@@ -158,10 +177,6 @@ pip install -e ./LightRAG  # 或其他框架
 
 更多框架和数据集说明，请查看 [Examples README](Examples/README.md) 和 [Evaluation README](Evaluation/README.md)。
 
-
-
-
-
 <h2 id="contribution--contact">📬 Contribution & Contact</h2>
 
 Contributions to improve the benchmark website are welcome. Please contact the project team via <a href="mailto:GraphRAG@hotmail.com">GraphRAG@hotmail.com </a>.
@@ -178,5 +193,3 @@ If you find this benchmark helpful, please cite our paper:
   year={2025}
 }
 ```
-
-
