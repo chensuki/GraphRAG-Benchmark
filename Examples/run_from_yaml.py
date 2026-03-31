@@ -268,9 +268,17 @@ async def run_framework(
             "chunk_token_size": fw_cfg.get("chunk_token_size", 1200),
             "chunk_overlap_token_size": fw_cfg.get("chunk_overlap_token_size", 100),
             # ClearRAG 参数
+            "retriever_mode": fw_cfg.get("retriever_mode", "graphagent"),
             "activation_mode": fw_cfg.get("activation_mode", "semantic_propagation"),
-            "passage_retrieval_mode": fw_cfg.get("passage_retrieval_mode", "pagerank"),
+            "storage_mode": fw_cfg.get("storage_mode", "both"),
             "fast_mode": fw_cfg.get("fast", False),
+            "chunk_size": fw_cfg.get("chunk_size", 1200),
+            "chunk_overlap": fw_cfg.get("chunk_overlap", 100),
+            "max_tool_calls": fw_cfg.get("max_tool_calls", 6),
+            "max_tokens": fw_cfg.get("max_tokens", 8192),
+            "similarity_threshold": fw_cfg.get("similarity_threshold", 0.95),
+            "max_context_length": fw_cfg.get("max_context_length", 10000),
+            "max_passage_content_length": fw_cfg.get("max_passage_content_length", 2000),
             # LinearRAG 参数
             "max_iterations": fw_cfg.get("max_iterations", 3),
             "iteration_threshold": fw_cfg.get("iteration_threshold", 0.4),
@@ -278,6 +286,8 @@ async def run_framework(
             "use_vectorized": fw_cfg.get("use_vectorized", False),
             "spacy_model": fw_cfg.get("spacy_model", "en_core_web_trf"),
             "max_workers": fw_cfg.get("max_workers", 8),
+            "passage_ratio": fw_cfg.get("passage_ratio", 1.5),
+            "damping": fw_cfg.get("damping", 0.5),
             # Fast-GraphRAG 参数
             "domain": fw_cfg.get("domain", ""),
             "entity_types": fw_cfg.get("entity_types", []),
@@ -454,8 +464,9 @@ def _print_config(
         logger.info(f"  chunk_token_size: {fw_cfg.get('chunk_token_size', 1200)}")
         logger.info(f"  chunk_overlap: {fw_cfg.get('chunk_overlap_token_size', 100)}")
     elif framework == "clearrag":
+        logger.info(f"  retriever_mode: {fw_cfg.get('retriever_mode', 'graphagent')}")
         logger.info(f"  activation_mode: {fw_cfg.get('activation_mode', 'semantic_propagation')}")
-        logger.info(f"  passage_retrieval_mode: {fw_cfg.get('passage_retrieval_mode', 'none')}")
+        logger.info(f"  storage_mode: {fw_cfg.get('storage_mode', 'both')}")
         logger.info(f"  fast: {fw_cfg.get('fast', False)}")
         logger.info(f"  max_concurrency: {fw_cfg.get('max_concurrency', 5)}")
         logger.info(f"  neo4j_uri: {neo4j_cfg.get('uri')}")

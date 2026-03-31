@@ -62,8 +62,9 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
         self._neo4j_database = config.get_extra("neo4j_database") or os.getenv("NEO4J_DATABASE", "neo4j")
 
         # ClearRAG 特定配置
+        self._retriever_mode = config.get_extra("retriever_mode", "graphagent")
         self._activation_mode = config.get_extra("activation_mode", "semantic_propagation")
-        self._passage_retrieval_mode = config.get_extra("passage_retrieval_mode", "pagerank")
+        self._storage_mode = config.get_extra("storage_mode", "both")
         self._fast_mode = config.get_extra("fast_mode", False)
 
     def _create_adapter(self, corpus_name: str) -> Any:
@@ -92,13 +93,9 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
         similarity_threshold = self.config.get_extra("similarity_threshold", 0.95)
 
         # 查询参数
-        vector_search_top_k = self.config.get_extra("vector_search_top_k", 100)
-        activation_threshold = self.config.get_extra("activation_threshold", 0.8)
-        passage_top_k = self.config.top_k  # 使用全局 top_k
         max_context_length = self.config.get_extra("max_context_length", 10000)
         max_passage_content_length = self.config.get_extra("max_passage_content_length", 2000)
         embedding_dimensions = self.config.embed_dimensions
-        embedding_mode = self.config.embed_type if self.config.embed_type in ("api", "local") else "api"
 
         return ClearRAGBenchmarkAdapter(
             working_dir=self.working_dir,
@@ -112,8 +109,10 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
             neo4j_user=self._neo4j_user,
             neo4j_password=self._neo4j_password,
             neo4j_database=self._neo4j_database,
+            retriever_mode=self._retriever_mode,
             activation_mode=self._activation_mode,
-            passage_retrieval_mode=self._passage_retrieval_mode,
+            storage_mode=self._storage_mode,
+            embedding_mode=self.config.embed_type,  # 使用全局 embedding.type
             fast_mode=self._fast_mode,
             max_concurrency=self.config.max_concurrency,
             enable_checkpoint=True,
@@ -126,13 +125,11 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
             max_tokens=max_tokens,
             similarity_threshold=similarity_threshold,
             # 查询参数
-            vector_search_top_k=vector_search_top_k,
-            activation_threshold=activation_threshold,
-            passage_top_k=passage_top_k,
             max_context_length=max_context_length,
             max_passage_content_length=max_passage_content_length,
             embedding_dimensions=embedding_dimensions,
-            embedding_mode=embedding_mode,
+            # 语料库名称（用于 linear 模式数据目录）
+            corpus_name="Linear_"+corpus_name,
         )
 
     async def abuild_index(self, content: str, **kwargs) -> None:
@@ -199,31 +196,35 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
         """构建统一格式的 context"""
         context = []
 
-        if hasattr(result, 'passages') and result.passages:
-            for passage in result.passages:
-                if isinstance(passage, dict):
-                    text = passage.get("content", "") or passage.get("text", "")
+        # 1. 优先使用 context 字段（内部适配器返回 List[str]）
+        if hasattr(result, 'context') and result.context:
+            for ctx in result.context:
+                if isinstance(ctx, str) and ctx:
+                    context.append({"type": "chunk", "content": ctx})
+                elif isinstance(ctx, dict):
+                    # 兼容 dict 格式
+                    text = ctx.get("content", "") or ctx.get("text", "")
                     if text:
                         context.append({"type": "chunk", "content": text})
-                elif isinstance(passage, str) and passage:
-                    context.append({"type": "chunk", "content": passage})
 
-        if hasattr(result, 'nodes') and result.nodes:
-            for node in result.nodes:
-                if isinstance(node, dict):
-                    name = node.get("name", "")
-                    desc = node.get("description", "")
-                    entity_type = node.get("entity_type", node.get("type", ""))
+        # 2. 提取实体（如果有）
+        if hasattr(result, 'entities') and result.entities:
+            for entity in result.entities:
+                if isinstance(entity, dict):
+                    name = entity.get("name", "")
+                    desc = entity.get("description", "")
+                    entity_type = entity.get("entity_type", entity.get("type", ""))
                     content = format_entity_content(name, entity_type, desc)
                     if content:
                         context.append({
                             "type": "entity",
                             "content": content,
-                            "name": name,
+                            "entity_name": name,
                             "entity_type": entity_type,
                             "description": desc
                         })
 
+        # 3. 提取关系（如果有）
         if hasattr(result, 'relationships') and result.relationships:
             for rel in result.relationships:
                 if isinstance(rel, dict):
@@ -235,15 +236,10 @@ class ClearRAGAdapter(BaseFrameworkAdapter):
                         context.append({
                             "type": "relationship",
                             "content": content,
-                            "source_name": source,
-                            "target_name": target,
+                            "src_id": source,
+                            "tgt_id": target,
                             "description": desc
                         })
-
-        if not context and hasattr(result, 'context') and result.context:
-            for ctx in result.context:
-                if isinstance(ctx, str) and ctx:
-                    context.append({"type": "chunk", "content": ctx})
 
         return context
 
